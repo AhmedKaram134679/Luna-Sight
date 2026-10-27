@@ -1,0 +1,39 @@
+{
+  "package": "LunaSight Reference-Site Scientific Validation Package",
+  "version": "0.1.0-diagnostic",
+  "status": "initial diagnostic; not independent validation",
+  "test_epoch": "2026-11-01 UTC",
+  "observer": {
+    "center": "MOON",
+    "frame": "MOON_ME",
+    "longitude_deg": 200.0,
+    "equivalent_longitude_deg": -160.0,
+    "latitude_deg": -88.45,
+    "altitude_km": 0.0,
+    "coordinate_type": "planetodetic"
+  },
+  "target": "EARTH",
+  "known_configuration_mismatch": [
+    "Angular Size uses solar_system_v0070.tm and observer MOON center",
+    "fixed-point State Vector uses a fixed surface point; other state data include solar_system_v0071.tm"
+  ],
+  "candidate_event_time_utc": "2026-11-01 07:40:30 UTC",
+  "candidate_event_status": "UNVERIFIED",
+  "source_files": [
+    {
+      "name": "New Text Document(1).txt",
+      "size_bytes": 21765,
+      "sha256": "1ca5c5da5de490e347dc4b77dfe396489c7ce6e266f34934c33a859ef0ef45df"
+    },
+    {
+      "name": "نص ملصق (3).txt",
+      "size_bytes": 14196,
+      "sha256": "8d8fdc3f315b3f2696da88a408cfb7b41d607eb7e5f95745311f22382748c69f"
+    },
+    {
+      "name": "نص ملصق(6).txt",
+      "size_bytes": 92322,
+      "sha256": "3a1b7a6d8235adaa2936990ae65b22f8cad7bd96c537ad5af30b8f64a8ead4a9"
+    }
+  ]
+}

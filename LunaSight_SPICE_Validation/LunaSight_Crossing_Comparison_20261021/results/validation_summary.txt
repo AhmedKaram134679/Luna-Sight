@@ -1,0 +1,23 @@
+LunaSight - Earth upper-limb crossing validation
+================================================
+Observer longitude east: 200.0 deg
+Observer latitude: -88.45 deg
+Observer altitude: 0.0 km
+Moon frame: MOON_ME
+Earth frame: ITRF93
+Moon radii from PCK (km): [1737.4, 1737.4, 1737.4]
+Earth radii from PCK (km): [6378.1366, 6378.1366, 6356.7519]
+Search start UTC: 2026-11-02T14:12:30
+Search stop UTC: 2026-11-02T14:16:00
+Horizons displayed reference: 2026-11-02T14:15:20 UTC
+Horizons interpolation estimate: 2026-11-02T14:15:20.333 UTC
+SPICE modeled crossing 1: 2026-11-02T14:12:47.395 UTC
+Samples CSV: D:\Programming projects\LunaSight_SPICE_Validation\results\earth_limb_samples.csv
+
+Limitations:
+- Uses NAIF MOON_ME (DE440-related ME frame); verify exact equivalence with Horizons MEAN_ME settings.
+- Uses ITRF93 with the downloaded high-accuracy Earth binary PCK.
+- Center light-time iteration; no stellar aberration.
+- One center emission epoch is used for the whole limb.
+- Shape uses radii in the loaded PCK; lunar radii may be equal.
+- Do not treat as an apples-to-apples Horizons comparison yet.

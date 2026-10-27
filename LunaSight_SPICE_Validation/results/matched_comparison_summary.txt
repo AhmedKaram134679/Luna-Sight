@@ -1,0 +1,58 @@
+LunaSight — matched diagnostic comparison
+========================================
+Reference data: user-provided Horizons rows (not live-refetched).
+Site: lon=200.0 E, lat=-88.45, alt=0.0 km
+Moon frame: MOON_ME; Earth frame: ITRF93
+Modes: NONE (geometric), LT (light-time), LT+S (light-time + stellar aberration)
+Limb: ellipsoid tangent-locus approximation, with per-point retarded time and optional stellar aberration.
+Caution: not a rigorous exact apparent-contour solver; compare modes and inspect residuals.
+
+2026-11-02T14:12:30
+  center_delta_arcsec_none: -0.086314
+  limb_delta_arcsec_none: -10.083729
+  center_delta_arcsec_lt: -0.116567
+  limb_delta_arcsec_lt: -10.083664
+  center_delta_arcsec_lt_s: +0.000150
+  limb_delta_arcsec_lt_s: -9.620425
+2026-11-02T14:13:00
+  center_delta_arcsec_none: -0.086313
+  limb_delta_arcsec_none: -10.083396
+  center_delta_arcsec_lt: -0.116363
+  limb_delta_arcsec_lt: -10.083331
+  center_delta_arcsec_lt_s: +0.000152
+  limb_delta_arcsec_lt_s: -9.620299
+2026-11-02T14:14:00
+  center_delta_arcsec_none: -0.086313
+  limb_delta_arcsec_none: -10.083233
+  center_delta_arcsec_lt: -0.115956
+  limb_delta_arcsec_lt: -10.083168
+  center_delta_arcsec_lt_s: +0.000153
+  limb_delta_arcsec_lt_s: -9.620552
+2026-11-02T14:15:00
+  center_delta_arcsec_none: -0.086316
+  limb_delta_arcsec_none: -10.083072
+  center_delta_arcsec_lt: -0.115553
+  limb_delta_arcsec_lt: -10.083007
+  center_delta_arcsec_lt_s: +0.000151
+  limb_delta_arcsec_lt_s: -9.620807
+2026-11-02T14:15:20
+  center_delta_arcsec_none: -0.086315
+  limb_delta_arcsec_none: -10.082518
+  center_delta_arcsec_lt: -0.115417
+  limb_delta_arcsec_lt: -10.082453
+  center_delta_arcsec_lt_s: +0.000152
+  limb_delta_arcsec_lt_s: -9.620391
+2026-11-02T14:15:21
+  center_delta_arcsec_none: -0.086314
+  limb_delta_arcsec_none: -10.082889
+  center_delta_arcsec_lt: -0.115409
+  limb_delta_arcsec_lt: -10.082824
+  center_delta_arcsec_lt_s: +0.000153
+  limb_delta_arcsec_lt_s: -9.620769
+2026-11-02T14:16:00
+  center_delta_arcsec_none: -0.086317
+  limb_delta_arcsec_none: -10.082411
+  center_delta_arcsec_lt: -0.115147
+  limb_delta_arcsec_lt: -10.082346
+  center_delta_arcsec_lt_s: +0.000151
+  limb_delta_arcsec_lt_s: -9.620561

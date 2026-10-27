@@ -1,0 +1,20 @@
+{
+  "source_files_present": true,
+  "angular_sample_count": 422,
+  "angular_value_at_2026_11_01_0740_deg": 1.97041376,
+  "spherical_sanity_diameter_deg": 1.97059428,
+  "absolute_difference_deg_sanity_only": 0.00018052,
+  "angular_export_kernel_v0070": true,
+  "fixed_point_state_metadata_present": true,
+  "range_export_kernel_v0071": true,
+  "validation_status": "UNVERIFIED — model semantics and matched event data are still required",
+  "source_sha256": {
+    "New Text Document(1).txt": "1ca5c5da5de490e347dc4b77dfe396489c7ce6e266f34934c33a859ef0ef45df",
+    "نص ملصق (3).txt": "8d8fdc3f315b3f2696da88a408cfb7b41d607eb7e5f95745311f22382748c69f",
+    "نص ملصق(6).txt": "3a1b7a6d8235adaa2936990ae65b22f8cad7bd96c537ad5af30b8f64a8ead4a9"
+  }
+}
+
+PASS: package integrity and diagnostic checks completed.
+NOT A PASS: final Earth-limb event time remains unverified.
+
