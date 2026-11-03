@@ -44,3 +44,7 @@ jobs:
       - name: Build and verify independent lunar surface observer SPK
         run: |
           python LunaSight_SPICE_Validation/site_observer_spk/verify_surface_observer.py
+
+      - name: Verify independent geometry and test limbpt corrections
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/verify_limbpt_and_geometry.py
