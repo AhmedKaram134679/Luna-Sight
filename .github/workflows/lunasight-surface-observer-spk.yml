@@ -70,3 +70,7 @@ jobs:
       - name: Audit Horizons gravitational light-deflection settings and SPICE coverage
         run: |
           python LunaSight_SPICE_Validation/site_observer_spk/gravitational_deflection_reconciliation.py
+
+      - name: Verify independent static point-mass light-deflection reference
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/point_mass_light_deflection.py
