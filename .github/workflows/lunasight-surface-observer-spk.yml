@@ -62,3 +62,7 @@ jobs:
       - name: Reconcile Horizons and SPICE limb definitions
         run: |
           python LunaSight_SPICE_Validation/site_observer_spk/reconcile_horizons_spice_limb.py
+
+      - name: Isolate limb shape under matched light corrections
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/matched_correction_limb_shape_isolation.py
