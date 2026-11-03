@@ -66,3 +66,7 @@ jobs:
       - name: Isolate limb shape under matched light corrections
         run: |
           python LunaSight_SPICE_Validation/site_observer_spk/matched_correction_limb_shape_isolation.py
+
+      - name: Audit Horizons gravitational light-deflection settings and SPICE coverage
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/gravitational_deflection_reconciliation.py
