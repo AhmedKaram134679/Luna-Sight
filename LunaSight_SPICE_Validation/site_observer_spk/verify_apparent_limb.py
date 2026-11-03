@@ -115,12 +115,14 @@ def initial_geometric_seed(et: float) -> tuple[float, float]:
 
 
 def independent_apparent_max(et: float, correction: str) -> dict[str, float]:
-    """Optimize apparent elevation over the ellipsoid with point-wise light time.
+    """Optimize the point-wise retarded *tangent* locus on the ellipsoid.
 
-    Reception observer state is fixed at et. For every candidate surface point,
-    solve the retarded emission epoch with two Newtonian light-time iterations,
-    transform that point using the Earth-fixed frame at emission, and for LT+S
-    apply NAIF stellar aberration using the observer's SSB velocity at reception.
+    For every candidate surface point, solve the two-iteration Newtonian
+    reception light-time equation. Enforce geometric tangency at the retarded
+    target orientation with the observer fixed at reception. For LT+S, apply
+    NAIF stellar aberration to the tangent ray using observer SSB velocity at
+    reception. The optimization is constrained to the limb, unlike maximizing
+    over arbitrary surface points.
     """
     if correction not in ("LT", "LT+S"):
         raise ValueError(f"Unsupported correction: {correction}")
@@ -129,18 +131,19 @@ def independent_apparent_max(et: float, correction: str) -> dict[str, float]:
     up = local_up_j2000(et)
     lon0, lat0 = initial_geometric_seed(et)
 
-    def evaluate(params: np.ndarray) -> tuple[float, float]:
+    def geometry(params: np.ndarray) -> tuple[float, float, float]:
         lon = float(params[0])
         lat = float(params[1])
         if lat <= -math.pi / 2.0 or lat >= math.pi / 2.0:
-            return -math.pi, et
+            return -math.pi, et, 1.0
         fixed = surface_point(radii, lon, lat)
+        normal_fixed = unit(fixed / (radii * radii))
         center_at_reception, _ = spice.spkezr(
             "EARTH", et, "J2000", "NONE", "SOLAR SYSTEM BARYCENTER"
         )
         center_at_reception = np.asarray(center_at_reception, dtype=float)[:3]
         light_time = float(np.linalg.norm(center_at_reception - obs) / C_KM_S)
-        # Match NAIF LT's documented two-iteration Newtonian light-time solve.
+        # NAIF LT uses two iterations for the point's one-way light time.
         for _ in range(2):
             emission_et = et - light_time
             center_state, _ = spice.spkezr(
@@ -157,14 +160,21 @@ def independent_apparent_max(et: float, correction: str) -> dict[str, float]:
         center = np.asarray(center_state, dtype=float)[:3]
         rotation = np.asarray(spice.pxform("ITRF93", "J2000", emission_et))
         point_ssb = center + rotation @ fixed
+        normal_j2000 = unit(rotation @ normal_fixed)
         ray = point_ssb - obs
+        tangent_residual = float(np.dot(normal_j2000, unit(ray)))
         if correction == "LT+S":
-            ray = np.asarray(spice.stelab(ray, obs_vel), dtype=float)
-        elevation = math.asin(float(np.clip(np.dot(unit(ray), up), -1.0, 1.0)))
-        return elevation, emission_et
+            apparent_ray = np.asarray(spice.stelab(ray, obs_vel), dtype=float)
+        else:
+            apparent_ray = ray
+        elevation = math.asin(float(np.clip(np.dot(unit(apparent_ray), up), -1.0, 1.0)))
+        return elevation, emission_et, tangent_residual
 
     def objective(params: np.ndarray) -> float:
-        return -evaluate(params)[0]
+        return -geometry(params)[0]
+
+    def tangent_constraint(params: np.ndarray) -> float:
+        return geometry(params)[2]
 
     bounds = (
         (lon0 - 0.05, lon0 + 0.05),
@@ -174,14 +184,19 @@ def independent_apparent_max(et: float, correction: str) -> dict[str, float]:
     result = minimize(
         objective,
         np.array([lon0, lat0], dtype=float),
-        method="Powell",
+        method="SLSQP",
         bounds=bounds,
-        options={"xtol": 1.0e-11, "ftol": 1.0e-14, "maxiter": 500},
+        constraints=({"type": "eq", "fun": tangent_constraint},),
+        options={"ftol": 1.0e-14, "maxiter": 500, "disp": False},
     )
-    elevation, emission_et = evaluate(np.asarray(result.x, dtype=float))
+    elevation, emission_et, tangent_residual = geometry(np.asarray(result.x, dtype=float))
     if not result.success:
         raise RuntimeError(
-            f"Independent {correction} optimizer did not converge: {result.message}"
+            f"Independent {correction} constrained optimizer did not converge: {result.message}"
+        )
+    if abs(tangent_residual) > 1.0e-9:
+        raise RuntimeError(
+            f"Independent {correction} limb violates tangent condition: {tangent_residual:.6e}"
         )
     if any(
         abs(float(result.x[i]) - bounds[i][j]) < 1.0e-7
@@ -192,10 +207,10 @@ def independent_apparent_max(et: float, correction: str) -> dict[str, float]:
         "reference_max_elevation_deg": math.degrees(elevation),
         "reference_emission_et": emission_et,
         "reference_light_time_seconds": et - emission_et,
+        "reference_tangent_residual": tangent_residual,
         "optimizer_iterations": float(getattr(result, "nit", -1)),
         "optimizer_evaluations": float(getattr(result, "nfev", -1)),
     }
-
 
 def limbpt_max(et: float, correction: str) -> dict[str, float]:
     """Get limbpt's highest-elevation point and its associated emission epoch."""
@@ -246,7 +261,7 @@ def main() -> None:
     failures = []
     try:
         temporary_spk, _ = diag.build_observer_spk()
-        print("reference_model=CONTINUOUS_TRIAxIAL_SURFACE_POINTWISE_LT")
+        print("reference_model=CONTINUOUS_POINTWISE_RETARDED_TANGENT_TRIAxIAL_ELLIPSOID")
         print("stellar_aberration=NAIF_STELAB_WITH_OBSERVER_SSB_VELOCITY_AT_RECEPTION")
         print(f"limbpt_ncuts={NCUTS}")
         print(f"acceptance_tolerance_arcsec={MAX_DIFFERENCE_ARCSEC}")
