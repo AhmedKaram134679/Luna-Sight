@@ -58,3 +58,7 @@ jobs:
       - name: Solve and verify LT+S apparent Earth-limb horizon crossing
         run: |
           python LunaSight_SPICE_Validation/site_observer_spk/solve_apparent_limb_crossing.py
+
+      - name: Reconcile Horizons and SPICE limb definitions
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/reconcile_horizons_spice_limb.py
