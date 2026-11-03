@@ -171,9 +171,12 @@ def verify_geometry(et: float) -> dict[str, float]:
     }
 
 
-def limb_point_elevations(et: float, correction: str) -> dict[str, float | int]:
+def limb_point_elevations(
+    et: float, correction: str, ncuts: int
+) -> dict[str, float | int]:
     """Run NAIF limbpt and evaluate returned limb rays at observer reception time."""
-    ncuts = 36
+    if ncuts < 36 or ncuts > 1440:
+        raise ValueError("ncuts must be between 36 and 1440 for this diagnostic.")
     maxn = 4 * ncuts
     # Choose a reference vector guaranteed not to be parallel to the
     # observer-target center vector in the target-fixed frame.
@@ -276,11 +279,24 @@ def main() -> None:
         print("limbpt_method=TANGENT/ELLIPSOID")
         print("limbpt_corloc=ELLIPSOID LIMB")
         print("limbpt_event_time_status=NOT_EVALUATED")
+        # A coarse 36-point ring is useful for smoke testing, but it is not
+        # sufficient to estimate the maximum limb elevation reliably. Check
+        # angular-sampling convergence at progressively finer resolutions.
         for correction in ("NONE", "LT", "LT+S"):
-            result = limb_point_elevations(et, correction)
-            print(f"limbpt_abcorr={correction}")
-            for key, value in result.items():
-                print(f"{key}={value:.12g}" if isinstance(value, float) else f"{key}={value}")
+            previous = None
+            for ncuts in (36, 180, 720):
+                result = limb_point_elevations(et, correction, ncuts)
+                print(f"limbpt_abcorr={correction}")
+                print(f"limbpt_ncuts={ncuts}")
+                for key, value in result.items():
+                    print(f"{key}={value:.12g}" if isinstance(value, float) else f"{key}={value}")
+                if previous is not None:
+                    delta = abs(
+                        float(result["max_limb_elevation_deg"])
+                        - float(previous["max_limb_elevation_deg"])
+                    )
+                    print(f"max_elevation_change_from_previous_deg={delta:.12g}")
+                previous = result
         print("status=PASS")
     finally:
         if tmp is not None:
