@@ -74,3 +74,8 @@ jobs:
       - name: Verify independent static point-mass light-deflection reference
         run: |
           python LunaSight_SPICE_Validation/site_observer_spk/point_mass_light_deflection.py
+
+      - name: Verify finite-distance solar light-deflection reference
+        working-directory: LunaSight_SPICE_Validation/site_observer_spk
+        run: |
+          python finite_distance_solar_deflection.py
