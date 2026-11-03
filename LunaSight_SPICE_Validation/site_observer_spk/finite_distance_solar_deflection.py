@@ -77,9 +77,13 @@ def finite_distance_deflection(
         raise ValueError("Unperturbed ray passes through the point-mass singularity.")
     if z_observer <= z_source:
         raise RuntimeError("Invalid source-to-observer path orientation.")
+    if not (z_source <= 0.0 <= z_observer):
+        raise ValueError("Deflector's closest-approach plane lies outside the finite ray segment.")
 
     source_radius = float(np.linalg.norm(source_from_mass))
     observer_radius = float(np.linalg.norm(observer_from_mass))
+    if source_radius <= 0.0 or observer_radius <= 0.0:
+        raise ValueError("Source and observer cannot coincide with the deflector.")
     source_factor = z_source / source_radius
     observer_factor = z_observer / observer_radius
     delta_n = (
@@ -146,14 +150,22 @@ def run_reference_tests() -> None:
     _assert_close(float(vector_delta[2]), 0.0, 1.0e-15,
                   "vector longitudinal component")
 
-    # Reversing the coordinate orientation and the endpoints preserves the
-    # physical bending after transforming back into the original frame.
-    reversed_result = finite_distance_deflection(
-        observer, source, np.zeros(3)
+    # A translated and rotated geometry must preserve the deflection magnitude.
+    angle = 0.731
+    rotation = np.array([
+        [math.cos(angle), -math.sin(angle), 0.0],
+        [math.sin(angle), math.cos(angle), 0.0],
+        [0.0, 0.0, 1.0],
+    ])
+    rotated = finite_distance_deflection(
+        rotation @ source, rotation @ observer, np.zeros(3)
     )
-    reversed_delta = np.asarray(reversed_result["propagation_direction_change"])
-    if not np.all(np.isfinite(reversed_delta)):
-        raise AssertionError("Reversed finite segment produced non-finite output.")
+    _assert_close(
+        float(rotated["finite_path_deflection_rad"]),
+        float(result["finite_path_deflection_rad"]),
+        VECTOR_TOL,
+        "rotation invariance",
+    )
 
     # Asymptotic solar grazing benchmark, with the solar radius as impact.
     solar_limit = 4.0 * GM_SUN_KM3_S2 / (C_KM_S * C_KM_S * R_SUN_KM) * ARCSEC_PER_RAD
