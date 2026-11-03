@@ -175,8 +175,8 @@ def limb_point_elevations(
     et: float, correction: str, ncuts: int
 ) -> dict[str, float | int]:
     """Run NAIF limbpt and evaluate returned limb rays at observer reception time."""
-    if ncuts < 36 or ncuts > 1440:
-        raise ValueError("ncuts must be between 36 and 1440 for this diagnostic.")
+    if ncuts < 36 or ncuts > 12000:
+        raise ValueError("ncuts must be between 36 and 12000 for this diagnostic.")
     maxn = 4 * ncuts
     # Choose a reference vector guaranteed not to be parallel to the
     # observer-target center vector in the target-fixed frame.
@@ -264,6 +264,96 @@ def limb_point_elevations(
     }
 
 
+def independent_ellipsoid_limb_max(et: float) -> dict[str, float]:
+    """Continuously optimize the instantaneous geometric ellipsoid limb.
+
+    This reference does not call limbpt. It parameterizes the tangent circle
+    after scaling the triaxial ellipsoid to a unit sphere, then independently
+    maximizes the observer-to-limb-point elevation. It is an instantaneous
+    NONE-geometry reference, not an LT/LT+S apparent-limb solution.
+    """
+    from scipy.optimize import minimize_scalar
+
+    radii = np.asarray(spice.bodvrd("EARTH", "RADII", 3)[1], dtype=float)
+    observer_state, _ = spice.spkezr(
+        SITE_NAME, et, INERTIAL_FRAME, "NONE", "SOLAR SYSTEM BARYCENTER"
+    )
+    earth_state, _ = spice.spkezr(
+        "EARTH", et, INERTIAL_FRAME, "NONE", "SOLAR SYSTEM BARYCENTER"
+    )
+    observer_ssb = np.asarray(observer_state, dtype=float)[:3]
+    earth_ssb = np.asarray(earth_state, dtype=float)[:3]
+    observer_fixed = np.asarray(
+        spice.pxform(INERTIAL_FRAME, EARTH_FRAME, et), dtype=float
+    ) @ (observer_ssb - earth_ssb)
+
+    # For x = A*y on the unit sphere, the tangent condition is
+    # dot(A^-1 o, y) = 1. Its intersection with |y|=1 is a circle.
+    scaled_observer = observer_fixed / radii
+    norm_sq = float(np.dot(scaled_observer, scaled_observer))
+    if norm_sq <= 1.0:
+        raise RuntimeError("Observer is not outside the Earth ellipsoid.")
+    circle_center = scaled_observer / norm_sq
+    circle_radius = math.sqrt(1.0 - 1.0 / norm_sq)
+    axis = scaled_observer / math.sqrt(norm_sq)
+    helper = np.array([0.0, 0.0, 1.0])
+    if abs(float(np.dot(axis, helper))) > 0.9:
+        helper = np.array([0.0, 1.0, 0.0])
+    basis_u = np.cross(axis, helper)
+    basis_u /= np.linalg.norm(basis_u)
+    basis_v = np.cross(axis, basis_u)
+
+    moon_radii = np.asarray(spice.bodvrd("MOON", "RADII", 3)[1], dtype=float)
+    site_fixed = independent_geodetic_point()
+    up_fixed = np.array(
+        [site_fixed[0] / moon_radii[0] ** 2,
+         site_fixed[1] / moon_radii[1] ** 2,
+         site_fixed[2] / moon_radii[2] ** 2],
+        dtype=float,
+    )
+    up_fixed /= np.linalg.norm(up_fixed)
+    up_j2000 = np.asarray(spice.pxform(MOON_FRAME, INERTIAL_FRAME, et)) @ up_fixed
+
+    def elevation(angle: float) -> float:
+        unit_point = (
+            circle_center
+            + circle_radius
+            * (basis_u * math.cos(angle) + basis_v * math.sin(angle))
+        )
+        limb_fixed = radii * unit_point
+        limb_ssb = earth_ssb + np.asarray(
+            spice.pxform(EARTH_FRAME, INERTIAL_FRAME, et)
+        ) @ limb_fixed
+        ray = limb_ssb - observer_ssb
+        ray /= np.linalg.norm(ray)
+        return math.asin(float(np.clip(np.dot(ray, up_j2000), -1.0, 1.0)))
+
+    # Locate the global maximum on a dense periodic scan, then refine within
+    # the neighboring grid interval. This avoids assuming unimodality globally.
+    grid_count = 65536
+    angles = np.linspace(0.0, 2.0 * math.pi, grid_count, endpoint=False)
+    values = np.fromiter((elevation(float(a)) for a in angles), dtype=float)
+    index = int(np.argmax(values))
+    spacing = 2.0 * math.pi / grid_count
+    center = float(angles[index])
+
+    def wrapped_objective(delta: float) -> float:
+        return -elevation((center + delta) % (2.0 * math.pi))
+
+    optimum = minimize_scalar(
+        wrapped_objective,
+        bounds=(-spacing, spacing),
+        method="bounded",
+        options={"xatol": 1.0e-14},
+    )
+    maximum = -float(optimum.fun)
+    return {
+        "independent_geometric_limb_max_elevation_deg": math.degrees(maximum),
+        "independent_optimizer_success": float(bool(optimum.success)),
+        "independent_grid_samples": float(grid_count),
+    }
+
+
 def main() -> None:
     load_kernels()
     tmp = None
@@ -276,6 +366,10 @@ def main() -> None:
             print(f"{key}={value:.12g}")
 
         print(f"limbpt_test_utc={TEST_UTC}")
+        independent = independent_ellipsoid_limb_max(et)
+        print("independent_reference_model=INSTANTANEOUS_TRIAxIAL_ELLIPSOID_TANGENT_CIRCLE")
+        for key, value in independent.items():
+            print(f"{key}={value:.12g}")
         print("limbpt_method=TANGENT/ELLIPSOID")
         print("limbpt_corloc=ELLIPSOID LIMB")
         print("limbpt_event_time_status=NOT_EVALUATED")
@@ -284,7 +378,7 @@ def main() -> None:
         # angular-sampling convergence at progressively finer resolutions.
         for correction in ("NONE", "LT", "LT+S"):
             previous = None
-            for ncuts in (36, 180, 720):
+            for ncuts in (36, 180, 720, 2880, 5760):
                 result = limb_point_elevations(et, correction, ncuts)
                 print(f"limbpt_abcorr={correction}")
                 print(f"limbpt_ncuts={ncuts}")
@@ -296,6 +390,12 @@ def main() -> None:
                         - float(previous["max_limb_elevation_deg"])
                     )
                     print(f"max_elevation_change_from_previous_deg={delta:.12g}")
+                if correction == "NONE":
+                    delta_to_reference = abs(
+                        float(result["max_limb_elevation_deg"])
+                        - independent["independent_geometric_limb_max_elevation_deg"]
+                    )
+                    print(f"max_elevation_delta_vs_independent_reference_deg={delta_to_reference:.12g}")
                 previous = result
         print("status=PASS")
     finally:
