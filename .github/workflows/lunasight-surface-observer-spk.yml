@@ -1,6 +1,9 @@
 name: LunaSight Surface Observer SPK Verification
 
 on:
+  push:
+    branches:
+      - science/limb-model-workflow
   workflow_dispatch:
 
 permissions:
