@@ -207,6 +207,12 @@ def independent_apparent_max(et: float, correction: str) -> dict[str, float]:
         "reference_max_elevation_deg": math.degrees(elevation),
         "reference_emission_et": emission_et,
         "reference_light_time_seconds": et - emission_et,
+        "reference_light_time_residual_seconds": abs(
+            (et - emission_et) - float(np.linalg.norm(
+                (np.asarray(spice.spkezr("EARTH", emission_et, "J2000", "NONE", "SOLAR SYSTEM BARYCENTER")[0], dtype=float)[:3]
+                + np.asarray(spice.pxform("ITRF93", "J2000", emission_et)) @ surface_point(radii, float(result.x[0]), float(result.x[1]))
+            - obs)) / C_KM_S),
+        ),
         "reference_tangent_residual": tangent_residual,
         "optimizer_iterations": float(getattr(result, "nit", -1)),
         "optimizer_evaluations": float(getattr(result, "nfev", -1)),
@@ -234,6 +240,7 @@ def limbpt_max(et: float, correction: str) -> dict[str, float]:
     obs, obs_vel = observer_state(et)
     up = local_up_j2000(et)
     elevations = []
+    light_time_residuals = []
     for i in range(count):
         limb_et = float(epochs[i])
         center_state, _ = spice.spkezr(
@@ -243,6 +250,7 @@ def limbpt_max(et: float, correction: str) -> dict[str, float]:
         rotation = np.asarray(spice.pxform("ITRF93", "J2000", limb_et))
         point = center + rotation @ points[i]
         ray = point - obs
+        light_time_residuals.append(abs((et - limb_et) - float(np.linalg.norm(point - obs)) / C_KM_S))
         if correction == "LT+S":
             ray = np.asarray(spice.stelab(ray, obs_vel), dtype=float)
         elevations.append(math.asin(float(np.clip(np.dot(unit(ray), up), -1.0, 1.0))))
@@ -250,6 +258,7 @@ def limbpt_max(et: float, correction: str) -> dict[str, float]:
     return {
         "limbpt_max_elevation_deg": math.degrees(elevations[i_max]),
         "limbpt_max_point_emission_et": float(epochs[i_max]),
+        "limbpt_max_point_light_time_residual_seconds": float(light_time_residuals[i_max]),
         "limbpt_epoch_span_seconds": float(np.max(epochs[:count]) - np.min(epochs[:count])),
         "limbpt_point_count": float(count),
     }
