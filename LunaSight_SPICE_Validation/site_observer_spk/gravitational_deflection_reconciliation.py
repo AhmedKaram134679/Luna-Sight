@@ -56,12 +56,12 @@ def main() -> None:
 
     target_source = required_line(raw, "Target body name:")
     center_source = required_line(raw, "Center body name:")
-    target_frame = required_line(raw, "Target pole/equ:")
-    target_radii = required_line(raw, "Target radii:")
-    center_site = required_line(raw, "Center geodetic:")
-    center_frame = required_line(raw, "Center pole/equ:")
-    deflectors = required_line(raw, "Rel. light bend:")
-    deflector_gm = required_line(raw, "Rel. lght bnd GM:")
+    target_frame = required_line(raw, "Target pole/equ")
+    target_radii = required_line(raw, "Target radii")
+    center_site = required_line(raw, "Center geodetic")
+    center_frame = required_line(raw, "Center pole/equ")
+    deflectors = required_line(raw, "Rel. light bend")
+    deflector_gm = required_line(raw, "Rel. lght bnd GM")
 
     print("phase=GRAVITATIONAL_LIGHT_DEFLECTION_RECONCILIATION_AUDIT")
     print(f"horizons_target={target_source}")
