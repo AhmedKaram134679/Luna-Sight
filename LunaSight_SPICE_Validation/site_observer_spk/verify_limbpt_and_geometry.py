@@ -175,7 +175,20 @@ def limb_point_elevations(et: float, correction: str) -> dict[str, float | int]:
     """Run NAIF limbpt and evaluate returned limb rays at observer reception time."""
     ncuts = 36
     maxn = 4 * ncuts
-    refvec = np.array([0.0, 0.0, 1.0], dtype=float)
+    # Choose a reference vector guaranteed not to be parallel to the
+    # observer-target center vector in the target-fixed frame.
+    center_vec, _ = spice.spkpos(
+        "EARTH", et, EARTH_FRAME, "NONE", SITE_NAME
+    )
+    center_vec = np.asarray(center_vec, dtype=float)
+    helper = np.array([0.0, 0.0, 1.0], dtype=float)
+    if abs(float(np.dot(center_vec / np.linalg.norm(center_vec), helper))) > 0.9:
+        helper = np.array([0.0, 1.0, 0.0], dtype=float)
+    refvec = np.cross(center_vec, helper)
+    refnorm = float(np.linalg.norm(refvec))
+    if not math.isfinite(refnorm) or refnorm <= 0.0:
+        raise RuntimeError("Could not construct a non-degenerate limbpt reference vector.")
+    refvec /= refnorm
     npts, points, epochs, tangents = spice.limbpt(
         "TANGENT/ELLIPSOID",
         "EARTH",
