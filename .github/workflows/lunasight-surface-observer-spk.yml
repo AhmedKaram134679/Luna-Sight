@@ -40,6 +40,8 @@ jobs:
           test -s LunaSight_SPICE_Validation/kernels/de440s.bsp
           test -s LunaSight_SPICE_Validation/kernels/moon_pa_de440_200625.bpc
           test -s LunaSight_SPICE_Validation/kernels/moon_de440_220930.tf
+          test -s LunaSight_SPICE_Validation/kernels/earth_latest_high_prec.bpc
+          test -s LunaSight_SPICE_Validation/kernels/earth_assoc_itrf93.tf
 
       - name: Build and verify independent lunar surface observer SPK
         run: |
