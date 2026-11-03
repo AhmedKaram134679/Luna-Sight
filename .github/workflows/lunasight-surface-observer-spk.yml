@@ -50,3 +50,7 @@ jobs:
       - name: Verify independent geometry and test limbpt corrections
         run: |
           python LunaSight_SPICE_Validation/site_observer_spk/verify_limbpt_and_geometry.py
+
+      - name: Compare independent apparent limb references for LT and LT+S
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/verify_apparent_limb.py
