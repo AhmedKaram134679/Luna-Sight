@@ -110,7 +110,15 @@ def main() -> None:
             "EARTH", et - lt, "J2000", "NONE", "SOLAR SYSTEM BARYCENTER"
         )
         earth_emit = np.asarray(earth_emit_state, dtype=float)[:3]
-        center_path_impact = segment_min_distance(earth_emit, earth_emit, obs)
+        # Freeze the Earth body-fixed frame at the target emission epoch.
+        # The center-directed segment is observer(reception) -> Earth center(emission).
+        emission_rotation = np.asarray(
+            spice.pxform("J2000", "ITRF93", et - lt), dtype=float
+        )
+        observer_fixed_at_emission = emission_rotation @ (obs - earth_emit)
+        center_path_impact = segment_min_distance(
+            np.zeros(3, dtype=float), observer_fixed_at_emission, np.zeros(3, dtype=float)
+        )
         print(f"test_epoch_utc={TEST_UTC}")
         print(f"earth_center_ray_min_distance_to_earth_center_km={center_path_impact:.9f}")
         print("earth_center_ray_enters_earth_interior=YES")
@@ -144,12 +152,28 @@ def main() -> None:
             )
             ec = np.asarray(ec_state, dtype=float)[:3]
             e2j = np.asarray(spice.pxform("ITRF93", "J2000", te), dtype=float)
-            source = ec + e2j @ points[i]
-            limb_impacts.append(segment_min_distance(ec, source, obs))
+            # Express the reception observer in the Earth-fixed frame at
+            # this limb point's emission epoch. Measure the actual observer-to-
+            # limb ray segment against the Earth center; do not include the
+            # Earth-center-to-surface radial segment (which would force zero).
+            observer_fixed = np.asarray(
+                spice.pxform("J2000", "ITRF93", te), dtype=float
+            ) @ (obs - ec)
+            limb_impacts.append(
+                segment_min_distance(np.zeros(3, dtype=float), observer_fixed, points[i])
+            )
+        min_impact = min(limb_impacts)
+        max_impact = max(limb_impacts)
+        minimum_radius = float(np.min(radii))
+        if min_impact < minimum_radius - 1.0e-3:
+            raise AssertionError(
+                "A geometric tangent-limb ray penetrates the Earth ellipsoid: "
+                f"minimum impact={min_impact:.9f} km, minimum radius={minimum_radius:.9f} km"
+            )
         print(f"geometric_limb_point_count={count}")
-        print(f"geometric_limb_minimum_path_impact_km={min(limb_impacts):.9f}")
-        print(f"geometric_limb_maximum_path_impact_km={max(limb_impacts):.9f}")
-        print("earth_limb_paths_are_external_or_grazing=YES")
+        print(f"geometric_limb_minimum_path_impact_km={min_impact:.9f}")
+        print(f"geometric_limb_maximum_path_impact_km={max_impact:.9f}")
+        print("geometric_limb_path_domain=EXTERIOR_OR_GRAZING_WITHIN_FROZEN_EPOCH_APPROXIMATION")
 
         print(f"solar_asymptotic_grazing_scale_arcsec={asymptotic_grazing_scale_arcsec(GM_SUN, R_SUN_KM):.9f}")
         print(f"earth_asymptotic_grazing_scale_arcsec={asymptotic_grazing_scale_arcsec(GM_EARTH, R_EARTH_EQ_KM):.9f}")
