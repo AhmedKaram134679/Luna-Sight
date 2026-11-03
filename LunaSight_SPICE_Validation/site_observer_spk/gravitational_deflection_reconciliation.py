@@ -15,9 +15,9 @@ import numpy as np
 import spiceypy as spice
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent.parent
+VALIDATION_ROOT = HERE.parent
 HORIZONS_EXPORT = (
-    ROOT / "LunaSight_Crossing_Comparison_20261021" /
+    VALIDATION_ROOT / "LunaSight_Crossing_Comparison_20261021" /
     "horizons_results" / "horizons_result_20261021T185427Z.txt"
 )
 C_KM_S = 299792.458
