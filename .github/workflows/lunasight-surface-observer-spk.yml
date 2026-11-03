@@ -54,3 +54,7 @@ jobs:
       - name: Compare independent apparent limb references for LT and LT+S
         run: |
           python LunaSight_SPICE_Validation/site_observer_spk/verify_apparent_limb.py
+
+      - name: Solve and verify LT+S apparent Earth-limb horizon crossing
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/solve_apparent_limb_crossing.py
