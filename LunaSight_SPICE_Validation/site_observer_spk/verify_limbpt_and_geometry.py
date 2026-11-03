@@ -226,11 +226,12 @@ def limb_point_elevations(et: float, correction: str) -> dict[str, float | int]:
     for i in range(count):
         limb_et = float(epochs[i])
         # limbpt points are target-fixed coordinates at their returned epochs.
-        earth_center, _ = spice.spkezr(
+        earth_center_state, _ = spice.spkezr(
             "EARTH", limb_et, INERTIAL_FRAME, "NONE", "SOLAR SYSTEM BARYCENTER"
         )
+        earth_center_position = np.asarray(earth_center_state, dtype=float)[:3]
         rotation = np.asarray(spice.pxform(EARTH_FRAME, INERTIAL_FRAME, limb_et), dtype=float)
-        point_ssb = np.asarray(earth_center, dtype=float) + rotation @ points[i]
+        point_ssb = earth_center_position + rotation @ points[i]
         ray = point_ssb - observer_pos
         if correction == "LT+S":
             ray = np.asarray(spice.stelab(ray, observer_vel), dtype=float)
