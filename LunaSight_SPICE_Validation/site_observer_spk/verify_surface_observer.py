@@ -85,6 +85,20 @@ def site_relative_state(et: float, surface_fixed: np.ndarray) -> np.ndarray:
 
 
 def build_site_spk(path: Path, epochs: np.ndarray, states: np.ndarray) -> None:
+    if states.ndim != 2 or states.shape[1] != 6:
+        raise ValueError(f"Expected an (N, 6) state array; got {states.shape}")
+    if epochs.ndim != 1 or len(epochs) != len(states):
+        raise ValueError(
+            f"Epoch/state count mismatch: {len(epochs)} epochs, {len(states)} states"
+        )
+    if len(epochs) < SPK_DEGREE + 1:
+        raise ValueError(
+            f"SPK Type 9 degree {SPK_DEGREE} requires at least "
+            f"{SPK_DEGREE + 1} states; got {len(epochs)}"
+        )
+    if not np.all(np.diff(epochs) > 0.0):
+        raise ValueError("SPK epochs must be strictly increasing")
+
     handle = spice.spkopn(str(path), "LunaSight independent lunar surface observer", 0)
     try:
         spice.spkw09(
@@ -96,10 +110,19 @@ def build_site_spk(path: Path, epochs: np.ndarray, states: np.ndarray) -> None:
             float(epochs[-1]),
             "LUNASIGHT SURFACE SITE TYPE 9",
             SPK_DEGREE,
+            len(states),
             states,
             epochs,
         )
-    finally:
+    except Exception:
+        # SPKCLS raises SPICE(NOSEGMENTSFOUND) if SPKW09 failed before writing
+        # any segment. Preserve the original write error instead of masking it.
+        try:
+            spice.spkcls(handle)
+        except spice.utils.exceptions.SpiceNOSEGMENTSFOUND:
+            pass
+        raise
+    else:
         spice.spkcls(handle)
 
 
