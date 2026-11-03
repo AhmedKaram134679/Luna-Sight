@@ -144,35 +144,38 @@ def main() -> None:
             raise RuntimeError("No geometric ellipsoid limb points returned.")
         points = np.asarray(points, dtype=float)
         epochs = np.asarray(epochs, dtype=float)
-        limb_impacts = []
+        limb_minimum_ellipsoid_levels = []
         for i in range(count):
             te = float(epochs[i])
             ec_state, _ = spice.spkezr(
                 "EARTH", te, "J2000", "NONE", "SOLAR SYSTEM BARYCENTER"
             )
             ec = np.asarray(ec_state, dtype=float)[:3]
-            e2j = np.asarray(spice.pxform("ITRF93", "J2000", te), dtype=float)
             # Express the reception observer in the Earth-fixed frame at
-            # this limb point's emission epoch. Measure the actual observer-to-
-            # limb ray segment against the Earth center; do not include the
-            # Earth-center-to-surface radial segment (which would force zero).
+            # this limb point's emission epoch. Test the complete observer-
+            # to-limb segment against the ellipsoid.
             observer_fixed = np.asarray(
                 spice.pxform("J2000", "ITRF93", te), dtype=float
             ) @ (obs - ec)
-            limb_impacts.append(
-                segment_min_distance(np.zeros(3, dtype=float), observer_fixed, points[i])
-            )
-        min_impact = min(limb_impacts)
-        max_impact = max(limb_impacts)
-        minimum_radius = float(np.min(radii))
-        if min_impact < minimum_radius - 1.0e-3:
+            delta = points[i] - observer_fixed
+            inv_r2 = 1.0 / (radii * radii)
+            denominator = float(np.dot(delta * inv_r2, delta))
+            if denominator <= 0.0:
+                raise RuntimeError("Degenerate observer-to-limb ray.")
+            parameter = float(np.clip(
+                -np.dot(observer_fixed * inv_r2, delta) / denominator, 0.0, 1.0
+            ))
+            closest = observer_fixed + parameter * delta
+            level = float(np.dot(closest * inv_r2, closest))
+            limb_minimum_ellipsoid_levels.append(level)
+        min_level = min(limb_minimum_ellipsoid_levels)
+        if min_level < 1.0 - 1.0e-10:
             raise AssertionError(
                 "A geometric tangent-limb ray penetrates the Earth ellipsoid: "
-                f"minimum impact={min_impact:.9f} km, minimum radius={minimum_radius:.9f} km"
+                f"minimum normalized ellipsoid level={min_level:.12g}"
             )
         print(f"geometric_limb_point_count={count}")
-        print(f"geometric_limb_minimum_path_impact_km={min_impact:.9f}")
-        print(f"geometric_limb_maximum_path_impact_km={max_impact:.9f}")
+        print(f"geometric_limb_minimum_ray_ellipsoid_level={min_level:.12g}")
         print("geometric_limb_path_domain=EXTERIOR_OR_GRAZING_WITHIN_FROZEN_EPOCH_APPROXIMATION")
 
         print(f"solar_asymptotic_grazing_scale_arcsec={asymptotic_grazing_scale_arcsec(GM_SUN, R_SUN_KM):.9f}")
