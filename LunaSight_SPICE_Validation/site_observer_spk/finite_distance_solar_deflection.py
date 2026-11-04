@@ -288,7 +288,8 @@ def run_reference_tests() -> None:
     print("published_finite_distance_ppn_expression=PASS")
     print("translation_invariance=PASS")
     print("horizons_reproduction=NOT_RUN")
-    print("de441_ephemeris_comparison=BLOCKED_UNTIL_DE441_KERNEL_AVAILABLE")
+    print("de441_ephemeris_comparison=NOT_RUN_BY_STANDALONE_REFERENCE")
+    print("de441_kernel_selection=NOT_APPLICABLE_TO_THIS_GEOMETRY_ONLY_TEST")
     print("event_roots_modified=NO")
     print("status=PASS")
 
