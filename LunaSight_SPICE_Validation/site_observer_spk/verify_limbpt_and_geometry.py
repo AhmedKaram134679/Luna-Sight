@@ -44,6 +44,22 @@ CHAIN_POSITION_TOL_KM = 1.0e-6
 CHAIN_VELOCITY_TOL_KM_S = 1.0e-9
 
 
+def selected_planetary_spk_paths() -> list[Path]:
+    """Return the exact planetary SPK paths selected for this process."""
+    configured_spks = os.environ.get("LUNASIGHT_PLANETARY_SPKS", "").strip()
+    paths = (
+        [Path(item).expanduser().resolve() for item in configured_spks.split(os.pathsep) if item]
+        if configured_spks
+        else [KERNEL_DIR / "de440s.bsp"]
+    )
+    if not paths:
+        raise RuntimeError("LUNASIGHT_PLANETARY_SPKS contains no usable paths.")
+    for path in paths:
+        if not path.is_file() or path.stat().st_size == 0:
+            raise FileNotFoundError(f"Missing or empty planetary SPK: {path}")
+    return paths
+
+
 def load_kernels() -> None:
     missing = [name for name in KERNEL_FILES if not (KERNEL_DIR / name).is_file()]
     if missing:
@@ -60,17 +76,7 @@ def load_kernels() -> None:
     # validation suite can be run against the historical DE440s baseline and
     # a separately provisioned DE441 pair without changing lunar-orientation
     # kernels or silently renaming one ephemeris as the other.
-    configured_spks = os.environ.get("LUNASIGHT_PLANETARY_SPKS", "").strip()
-    planetary_spks = (
-        [Path(item).expanduser().resolve() for item in configured_spks.split(os.pathsep) if item]
-        if configured_spks
-        else [KERNEL_DIR / "de440s.bsp"]
-    )
-    if not planetary_spks:
-        raise RuntimeError("LUNASIGHT_PLANETARY_SPKS contains no usable paths.")
-    for path in planetary_spks:
-        if not path.is_file() or path.stat().st_size == 0:
-            raise FileNotFoundError(f"Missing or empty planetary SPK: {path}")
+    for path in selected_planetary_spk_paths():
         spice.furnsh(str(path))
 
 
