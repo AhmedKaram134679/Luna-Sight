@@ -150,6 +150,38 @@ def run_reference_tests() -> None:
     _assert_close(float(vector_delta[2]), 0.0, 1.0e-15,
                   "vector longitudinal component")
 
+    # Direction convention and path-reversal test for a static monopole.
+    # With b pointing away from the mass, the photon propagation direction
+    # changes toward the mass (-b), while the apparent observer-to-source
+    # direction changes away from the mass (+b). Reversing source/observer
+    # reverses n, but must preserve these physical transverse changes.
+    reversed = finite_distance_deflection(observer, source, np.zeros(3))
+    impact_direction = np.array([1.0, 0.0, 0.0])
+    propagation_change = np.asarray(result["propagation_direction_change"])
+    reversed_propagation_change = np.asarray(
+        reversed["propagation_direction_change"]
+    )
+    apparent_change = (
+        np.asarray(result["deflected_apparent_direction"])
+        - np.asarray(result["geometric_apparent_direction"])
+    )
+    reversed_apparent_change = (
+        np.asarray(reversed["deflected_apparent_direction"])
+        - np.asarray(reversed["geometric_apparent_direction"])
+    )
+    if not float(np.dot(propagation_change, impact_direction)) < 0.0:
+        raise AssertionError("Photon propagation deflection has the wrong sign.")
+    if not float(np.dot(apparent_change, impact_direction)) > 0.0:
+        raise AssertionError("Apparent observer-to-source deflection has the wrong sign.")
+    if not np.allclose(
+        propagation_change, reversed_propagation_change, rtol=0.0, atol=VECTOR_TOL
+    ):
+        raise AssertionError("Propagation transverse change is not invariant under path reversal.")
+    if not np.allclose(
+        apparent_change, reversed_apparent_change, rtol=0.0, atol=VECTOR_TOL
+    ):
+        raise AssertionError("Apparent transverse change is not invariant under path reversal.")
+
     # A translated and rotated geometry must preserve the deflection magnitude.
     angle = 0.731
     rotation = np.array([
@@ -195,6 +227,8 @@ def run_reference_tests() -> None:
     print(f"asymptotic_solar_grazing_deflection_arcsec={solar_limit:.12g}")
     print("finite_endpoint_case=PASS")
     print("vector_scalar_consistency=PASS")
+    print("propagation_vs_apparent_direction_sign=PASS")
+    print("source_observer_path_reversal=PASS")
     print("translation_invariance=PASS")
     print("horizons_reproduction=NOT_RUN")
     print("de441_ephemeris_comparison=BLOCKED_UNTIL_DE441_KERNEL_AVAILABLE")
