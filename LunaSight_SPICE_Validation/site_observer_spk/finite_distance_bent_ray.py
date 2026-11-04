@@ -119,7 +119,7 @@ def finite_endpoint_bent_ray(
 
     def weighted_integrand(distance: float) -> np.ndarray:
         force = transverse_acceleration(distance)
-        return np.concatenate((force, (length - distance) * force))
+        return np.concatenate((force, ((length - distance) / length) * force))
 
     integrals, endpoint_integral_error = quad_vec(
         weighted_integrand, 0.0, length,
@@ -127,7 +127,7 @@ def finite_endpoint_bent_ray(
     )
     total_direction_change = np.asarray(integrals[:3], dtype=float)
     weighted_direction_change = np.asarray(integrals[3:], dtype=float)
-    source_change = -weighted_direction_change / length
+    source_change = -weighted_direction_change
     observer_change = source_change + total_direction_change
 
     # Verify the fixed-endpoint boundary condition independently from the
@@ -135,7 +135,7 @@ def finite_endpoint_bent_ray(
     def displacement_integrand(distance: float) -> np.ndarray:
         partial, _ = quad_vec(
             transverse_acceleration, 0.0, distance,
-            epsabs=1.0e-18, epsrel=2.0e-12,
+            epsabs=integration_epsabs, epsrel=integration_epsrel,
         )
         return source_change + np.asarray(partial, dtype=float)
 
@@ -191,22 +191,21 @@ def run_reference_tests() -> None:
     force = lambda z: coefficient * impact / (impact * impact + z * z) ** 1.5
     total, total_error = quad(force, z_source, z_observer, epsabs=1.0e-18, epsrel=1.0e-12)
     path_length = z_observer - z_source
-    # Integrate over dimensionless u in [0, 1]. This keeps the independent
-    # reference well-scaled and makes the source-direction integral directly
-    # angular (radians), avoiding the previous radian-kilometre error label.
+    # Integrate over dimensionless u in [0, 1]. Both independent endpoint
+    # references are angular integrals (radians), with separately scaled errors.
     weighted, weighted_error = quad(
-        lambda u: (1.0 - u) * path_length * force(z_source + path_length * u),
+        lambda u: (1.0 - u) * force(z_source + path_length * u),
         0.0, 1.0, epsabs=1.0e-25, epsrel=2.0e-13,
     )
     total, total_error = quad(
         lambda u: path_length * force(z_source + path_length * u),
         0.0, 1.0, epsabs=1.0e-25, epsrel=2.0e-13,
     )
-    expected_source = -weighted / path_length
+    expected_source = -weighted
     expected_observer = expected_source + total
     actual_source = float(np.asarray(result["source_direction_change"])[0])
     actual_observer = float(np.asarray(result["observer_direction_change"])[0])
-    source_reference_error_rad = weighted_error / path_length
+    source_reference_error_rad = weighted_error
     tolerance = max(2.0e-14, 8.0 * (total_error + source_reference_error_rad))
     if abs(actual_source - expected_source) > tolerance:
         raise AssertionError("Source endpoint direction disagrees with independent quadrature.")
