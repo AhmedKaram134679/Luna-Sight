@@ -55,7 +55,10 @@ def main() -> None:
 
         print("phase=MATCHED_CORRECTION_LIMB_SHAPE_ISOLATION")
         print("site=longitude_200.0E_latitude_-88.45deg_altitude_0km")
-        print("ephemeris=DE440s_for_all_six_models")
+        selected_spks = models.diag.selected_planetary_spk_paths()
+        import os
+        print("planetary_spk_files=" + ";".join(path.name for path in selected_spks))
+        print("planetary_spk_selection=" + ("ENV_LUNASIGHT_PLANETARY_SPKS" if os.environ.get("LUNASIGHT_PLANETARY_SPKS", "").strip() else "DEFAULT_DE440S"))
         print("observer_state=shared_LunaSight_surface_observer_SPK")
         print("local_up=shared_MOON_ME_geodetic_surface_normal_at_reception")
         print("root_solver=brentq_same_bracket_xtol_1e-4_seconds")
