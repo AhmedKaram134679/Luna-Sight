@@ -182,6 +182,26 @@ def run_reference_tests() -> None:
     ):
         raise AssertionError("Apparent transverse change is not invariant under path reversal.")
 
+    # Published finite-distance PPN expression (gamma=1):
+    # Delta_alpha = (1+gamma) GM/(b c^2) * (cos(beta)-cos(delta)),
+    # with sin(beta)=b/r_observer and sin(delta)=b/r_source.
+    # Here cos(beta)=z_observer/r_observer and cos(delta)=z_source/r_source
+    # because the closest-approach plane lies between source and observer.
+    source_radius = float(np.linalg.norm(source))
+    observer_radius = float(np.linalg.norm(observer))
+    beta_cos = math.sqrt(1.0 - (b / observer_radius) ** 2)
+    delta_cos = -math.sqrt(1.0 - (b / source_radius) ** 2)
+    published_finite_angle = (
+        2.0 * GM_SUN_KM3_S2 / (b * C_KM_S * C_KM_S)
+        * (beta_cos - delta_cos)
+    )
+    _assert_close(
+        float(result["finite_path_deflection_rad"]),
+        published_finite_angle,
+        5.0e-15,
+        "published finite-distance PPN expression",
+    )
+
     # A translated and rotated geometry must preserve the deflection magnitude.
     angle = 0.731
     rotation = np.array([
@@ -229,6 +249,7 @@ def run_reference_tests() -> None:
     print("vector_scalar_consistency=PASS")
     print("propagation_vs_apparent_direction_sign=PASS")
     print("source_observer_path_reversal=PASS")
+    print("published_finite_distance_ppn_expression=PASS")
     print("translation_invariance=PASS")
     print("horizons_reproduction=NOT_RUN")
     print("de441_ephemeris_comparison=BLOCKED_UNTIL_DE441_KERNEL_AVAILABLE")
