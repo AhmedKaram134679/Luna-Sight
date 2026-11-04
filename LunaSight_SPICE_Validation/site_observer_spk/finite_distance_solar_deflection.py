@@ -177,10 +177,18 @@ def run_reference_tests() -> None:
         propagation_change, reversed_propagation_change, rtol=0.0, atol=VECTOR_TOL
     ):
         raise AssertionError("Propagation transverse change is not invariant under path reversal.")
-    if not np.allclose(
-        apparent_change, reversed_apparent_change, rtol=0.0, atol=VECTOR_TOL
-    ):
-        raise AssertionError("Apparent transverse change is not invariant under path reversal.")
+    # Compare only the transverse component: normalization introduces a
+    # second-order longitudinal component whose sign changes with n reversal.
+    forward_apparent_transverse = float(np.dot(apparent_change, impact_direction))
+    reverse_apparent_transverse = float(
+        np.dot(reversed_apparent_change, impact_direction)
+    )
+    _assert_close(
+        forward_apparent_transverse,
+        reverse_apparent_transverse,
+        VECTOR_TOL,
+        "apparent transverse change under path reversal",
+    )
 
     # Published finite-distance PPN expression (gamma=1):
     # Delta_alpha = (1+gamma) GM/(b c^2) * (cos(beta)-cos(delta)),
