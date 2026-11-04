@@ -1,0 +1,81 @@
+name: LunaSight Surface Observer SPK Verification
+
+on:
+  push:
+    branches:
+      - science/limb-model-workflow
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lunasight-surface-observer-spk
+  cancel-in-progress: false
+
+jobs:
+  verify-surface-observer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout isolated validation branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned numerical dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy==2.1.3 scipy==1.14.1 spiceypy==6.0.0
+
+      - name: Verify required SPICE kernel files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s LunaSight_SPICE_Validation/kernels/naif0012.tls
+          test -s LunaSight_SPICE_Validation/kernels/pck00011.tpc
+          test -s LunaSight_SPICE_Validation/kernels/de440s.bsp
+          test -s LunaSight_SPICE_Validation/kernels/moon_pa_de440_200625.bpc
+          test -s LunaSight_SPICE_Validation/kernels/moon_de440_220930.tf
+          test -s LunaSight_SPICE_Validation/kernels/earth_latest_high_prec.bpc
+          test -s LunaSight_SPICE_Validation/kernels/earth_assoc_itrf93.tf
+
+      - name: Build and verify independent lunar surface observer SPK
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/verify_surface_observer.py
+
+      - name: Verify independent geometry and test limbpt corrections
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/verify_limbpt_and_geometry.py
+
+      - name: Compare independent apparent limb references for LT and LT+S
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/verify_apparent_limb.py
+
+      - name: Solve and verify LT+S apparent Earth-limb horizon crossing
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/solve_apparent_limb_crossing.py
+
+      - name: Reconcile Horizons and SPICE limb definitions
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/reconcile_horizons_spice_limb.py
+
+      - name: Isolate limb shape under matched light corrections
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/matched_correction_limb_shape_isolation.py
+
+      - name: Audit Horizons gravitational light-deflection settings and SPICE coverage
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/gravitational_deflection_reconciliation.py
+
+      - name: Verify independent static point-mass light-deflection reference
+        run: |
+          python LunaSight_SPICE_Validation/site_observer_spk/point_mass_light_deflection.py
+
+      - name: Verify finite-distance solar light-deflection reference
+        working-directory: LunaSight_SPICE_Validation/site_observer_spk
+        run: |
+          python finite_distance_solar_deflection.py
