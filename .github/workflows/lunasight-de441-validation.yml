@@ -80,3 +80,7 @@ jobs:
       - name: Verify finite-distance solar deflection reference
         working-directory: LunaSight_SPICE_Validation/site_observer_spk
         run: python finite_distance_solar_deflection.py
+
+      - name: Verify fixed-endpoint finite-distance bent-ray reference
+        working-directory: LunaSight_SPICE_Validation/site_observer_spk
+        run: python finite_distance_bent_ray.py
