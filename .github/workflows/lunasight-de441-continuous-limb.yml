@@ -5,9 +5,11 @@ on:
   push:
     branches:
       - science/de441-continuous-limb-tracking
+      - science/de441-limb-temporal-convergence
     paths:
       - .github/workflows/lunasight-de441-continuous-limb.yml
       - LunaSight_SPICE_Validation/site_observer_spk/verify_de441_solar_bent_limb_continuity.py
+      - LunaSight_SPICE_Validation/site_observer_spk/compare_de441_limb_temporal_convergence.py
       - LunaSight_SPICE_Validation/site_observer_spk/verify_de441_solar_bent_limb_expanded.py
       - LunaSight_SPICE_Validation/site_observer_spk/finite_distance_bent_ray.py
       - LunaSight_SPICE_Validation/site_observer_spk/point_mass_light_deflection.py
@@ -28,7 +30,7 @@ jobs:
       LUNASIGHT_PLANETARY_SPKS: ${{ github.workspace }}/LunaSight_SPICE_Validation/kernels/de441_part-1.bsp:${{ github.workspace }}/LunaSight_SPICE_Validation/kernels/de441_part-2.bsp
       LUNASIGHT_CONTINUITY_START_UTC: "2026-11-02T14:12:00"
       LUNASIGHT_CONTINUITY_DURATION_SECONDS: "240"
-      LUNASIGHT_CONTINUITY_STEP_SECONDS: "10"
+      LUNASIGHT_CONTINUITY_STEP_SECONDS: "5"
       LUNASIGHT_MAX_POINT_STEP_KM: "100"
       LUNASIGHT_MAX_DIRECTION_STEP_ARCSEC: "0.1"
     steps:
@@ -59,9 +61,23 @@ jobs:
           test -s de441_part-2.bsp
           sha256sum de441_part-1.bsp de441_part-2.bsp
 
-      - name: Track 96 corresponding limb branches at 25 epochs
+      - name: Track 96 branches at 5-second resolution across the full interval
         working-directory: LunaSight_SPICE_Validation/site_observer_spk
+        env:
+          LUNASIGHT_CONTINUITY_STEP_SECONDS: "5"
+          LUNASIGHT_CONTINUITY_OUTPUT: de441_limb_continuity_5s.csv
         run: python verify_de441_solar_bent_limb_continuity.py
+
+      - name: Track 96 branches at 1-second resolution across the full interval
+        working-directory: LunaSight_SPICE_Validation/site_observer_spk
+        env:
+          LUNASIGHT_CONTINUITY_STEP_SECONDS: "1"
+          LUNASIGHT_CONTINUITY_OUTPUT: de441_limb_continuity_1s.csv
+        run: python verify_de441_solar_bent_limb_continuity.py
+
+      - name: Compare common epochs and branch identity across resolutions
+        working-directory: LunaSight_SPICE_Validation/site_observer_spk
+        run: python compare_de441_limb_temporal_convergence.py
 
       - name: Upload dense temporal continuity data
         if: always()
@@ -69,6 +85,8 @@ jobs:
         with:
           name: lunasight-de441-dense-limb-continuity
           path: |
-            LunaSight_SPICE_Validation/site_observer_spk/de441_limb_continuity.csv
+            LunaSight_SPICE_Validation/site_observer_spk/de441_limb_continuity_5s.csv
+            LunaSight_SPICE_Validation/site_observer_spk/de441_limb_continuity_1s.csv
+            LunaSight_SPICE_Validation/site_observer_spk/de441_limb_convergence_comparison.csv
           if-no-files-found: ignore
           retention-days: 30
