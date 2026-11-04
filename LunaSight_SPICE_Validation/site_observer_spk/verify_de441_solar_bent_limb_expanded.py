@@ -22,7 +22,7 @@ import verify_limbpt_and_geometry as diag
 from finite_distance_bent_ray import finite_endpoint_bent_ray
 from point_mass_light_deflection import ARCSEC_PER_RAD, C_KM_S, GM_SUN_KM3_S2
 
-TEST_UTC = "2026-11-02T14:14:00"
+TEST_UTC = os.environ.get("LUNASIGHT_VALIDATION_UTC", "2026-11-02T14:14:00").strip()
 FRAME = "J2000"
 EARTH_FRAME = "ITRF93"
 EXPECTED_DE441_PARTS = ("de441_part-1.bsp", "de441_part-2.bsp")
