@@ -6,6 +6,7 @@ limb and does not alter any historical comparison outputs.
 from __future__ import annotations
 
 import math
+import os
 import tempfile
 from pathlib import Path
 
@@ -32,7 +33,6 @@ VELOCITY_TOLERANCE_KM_S = 2.0e-8
 KERNEL_FILES = (
     "naif0012.tls",
     "pck00011.tpc",
-    "de440s.bsp",
     "moon_pa_de440_200625.bpc",
     "moon_de440_220930.tf",
 )
@@ -48,6 +48,19 @@ def require_kernels() -> None:
         path = KERNEL_DIR / name
         if path.stat().st_size == 0:
             raise RuntimeError(f"Kernel is empty: {path}")
+        spice.furnsh(str(path))
+
+    configured_spks = os.environ.get("LUNASIGHT_PLANETARY_SPKS", "").strip()
+    planetary_spks = (
+        [Path(item).expanduser().resolve() for item in configured_spks.split(os.pathsep) if item]
+        if configured_spks
+        else [KERNEL_DIR / "de440s.bsp"]
+    )
+    if not planetary_spks:
+        raise RuntimeError("LUNASIGHT_PLANETARY_SPKS contains no usable paths.")
+    for path in planetary_spks:
+        if not path.is_file() or path.stat().st_size == 0:
+            raise FileNotFoundError(f"Missing or empty planetary SPK: {path}")
         spice.furnsh(str(path))
 
 
