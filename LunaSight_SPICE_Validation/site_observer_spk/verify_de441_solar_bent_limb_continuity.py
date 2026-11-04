@@ -192,10 +192,12 @@ def main() -> None:
                     max_h_step = max(max_h_step, abs(h - old_h))
                     rows.append((utc, index, h, point_step, ssb_point_step, source_step, observer_step,
                                  source_second_difference, observer_second_difference,
-                                 point_second_difference, abs(residual), surface_residual, ref_error))
+                                 point_second_difference, abs(residual), surface_residual, ref_error,
+                                 *point_fixed.tolist(), *source_dir.tolist(), *observer_dir.tolist()))
                 else:
                     rows.append((utc, index, h, "", "", "", "", "", "", "", abs(residual),
-                                 surface_residual, ref_error))
+                                 surface_residual, ref_error, *point_fixed.tolist(),
+                                 *source_dir.tolist(), *observer_dir.tolist()))
                 previous[index] = (
                     point_fixed.copy(), point_ssb.copy(), source_dir, observer_dir, h, utc,
                     None if index not in previous else (
@@ -216,7 +218,10 @@ def main() -> None:
                              "source_direction_second_difference_arcsec",
                              "observer_direction_second_difference_arcsec",
                              "earth_fixed_point_second_difference_km",
-                             "tangency_residual", "surface_residual", "independent_reference_error"))
+                             "tangency_residual", "surface_residual", "independent_reference_error",
+                             "point_fixed_x_km", "point_fixed_y_km", "point_fixed_z_km",
+                             "source_dir_x", "source_dir_y", "source_dir_z",
+                             "observer_dir_x", "observer_dir_y", "observer_dir_z"))
             writer.writerows(rows)
 
         print("phase=DE441_SOLAR_BENT_LIMB_DENSE_TEMPORAL_CONTINUITY")
@@ -249,6 +254,8 @@ def main() -> None:
         print("crossing_time_extraction=NOT_RUN")
         print("crossing_roots_modified=NO")
         print("historical_horizons_outputs_modified=NO")
+        print("contact_point_vectors=EXPORTED_EARTH_FIXED_FRAME")
+        print("apparent_direction_vectors=EXPORTED_SOURCE_AND_OBSERVER_ENDPOINTS")
         print(f"continuity_csv={output}")
         print("status=PASS")
     finally:
