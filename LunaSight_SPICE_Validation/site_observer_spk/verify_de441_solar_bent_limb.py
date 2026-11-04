@@ -32,6 +32,14 @@ ROOT_XTOL = 2.0e-14
 TANGENCY_TOL = 2.0e-12
 
 
+def angle_between(a: np.ndarray, b: np.ndarray) -> float:
+    """Stable small-angle separation without acos precision loss."""
+    a_unit = a / np.linalg.norm(a)
+    b_unit = b / np.linalg.norm(b)
+    return math.atan2(float(np.linalg.norm(np.cross(a_unit, b_unit))),
+                      float(np.dot(a_unit, b_unit)))
+
+
 def unit(v: np.ndarray) -> np.ndarray:
     norm = float(np.linalg.norm(v))
     if not math.isfinite(norm) or norm <= 0.0:
@@ -180,12 +188,8 @@ def main() -> None:
                 ray["observer_to_source_direction_at_observer"], dtype=float
             )
             observer_geometric = unit(observer - point_ssb)
-            angular_observer = math.acos(float(np.clip(
-                np.dot(observer_apparent, -observer_geometric), -1.0, 1.0
-            )))
-            source_angle = math.acos(float(np.clip(
-                np.dot(geometric_source, corrected_source), -1.0, 1.0
-            )))
+            angular_observer = angle_between(observer_apparent, -observer_geometric)
+            source_angle = angle_between(geometric_source, corrected_source)
 
             ref_source, ref_observer = scalar_endpoint_reference(point_ssb, observer, sun)
             production_source = np.asarray(ray["source_direction_change"], dtype=float)
@@ -204,9 +208,7 @@ def main() -> None:
                 integration_epsabs=1.0e-22, integration_epsrel=2.0e-14,
             )
             tight_source = np.asarray(tight["source_to_observer_direction_at_source"])
-            convergence = math.acos(float(np.clip(
-                np.dot(corrected_source, tight_source), -1.0, 1.0
-            )))
+            convergence = angle_between(corrected_source, tight_source)
             max_tangency = max(max_tangency, tangent_error)
             max_surface = max(max_surface, surface_residual)
             max_reference = max(max_reference, reference_error)
