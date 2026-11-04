@@ -22,7 +22,7 @@ import verify_limbpt_and_geometry as diag
 from finite_distance_bent_ray import finite_endpoint_bent_ray
 from point_mass_light_deflection import ARCSEC_PER_RAD, C_KM_S, GM_SUN_KM3_S2
 
-TEST_UTC = "2026-11-02T14:14:00"
+TEST_UTC = os.environ.get("LUNASIGHT_VALIDATION_UTC", "2026-11-02T14:14:00").strip()
 FRAME = "J2000"
 EARTH_FRAME = "ITRF93"
 EXPECTED_DE441_PARTS = ("de441_part-1.bsp", "de441_part-2.bsp")
@@ -236,7 +236,7 @@ def main() -> None:
                 float(np.linalg.norm(point_fixed - surface_point(h0))),
             )
             max_observer_change_arcsec = max(
-                max_observer_change_arcsec, angular_observer * ARCSEC_PER_RAD
+                max_observer_change_arcsec, geometric_observer_offset * ARCSEC_PER_RAD
             )
             max_source_change_arcsec = max(
                 max_source_change_arcsec, source_angle * ARCSEC_PER_RAD
