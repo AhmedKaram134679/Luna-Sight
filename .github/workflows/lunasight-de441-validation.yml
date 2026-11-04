@@ -12,10 +12,12 @@ on:
     branches:
       - science/limb-model-workflow
       - science/de441-solar-bent-limb
+      - science/de441-solar-bent-limb-expanded-checks
     paths:
       - .github/workflows/lunasight-de441-validation.yml
       - LunaSight_SPICE_Validation/site_observer_spk/finite_distance_bent_ray.py
       - LunaSight_SPICE_Validation/site_observer_spk/verify_de441_bent_ray.py
+      - LunaSight_SPICE_Validation/site_observer_spk/verify_de441_solar_bent_limb_expanded.py
       - LunaSight_SPICE_Validation/site_observer_spk/verify_de441_solar_bent_limb.py
 
 permissions:
@@ -101,6 +103,19 @@ jobs:
       - name: Verify DE441-bound fixed-endpoint solar bent ray
         working-directory: LunaSight_SPICE_Validation/site_observer_spk
         run: python verify_de441_bent_ray.py
+
+      - name: Verify expanded DE441 solar-deflected triaxial limb tangency
+        working-directory: LunaSight_SPICE_Validation/site_observer_spk
+        run: python verify_de441_solar_bent_limb_expanded.py | tee de441_solar_bent_limb_expanded_results.txt
+
+      - name: Upload expanded solar limb validation results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunasight-de441-solar-bent-limb-expanded-results
+          path: LunaSight_SPICE_Validation/site_observer_spk/de441_solar_bent_limb_expanded_results.txt
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Verify DE441 solar-deflected triaxial limb tangency
         working-directory: LunaSight_SPICE_Validation/site_observer_spk
