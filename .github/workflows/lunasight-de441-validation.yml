@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - science/limb-model-workflow
+      - science/de441-solar-bent-limb
     paths:
       - .github/workflows/lunasight-de441-validation.yml
       - LunaSight_SPICE_Validation/site_observer_spk/finite_distance_bent_ray.py
@@ -28,7 +29,7 @@ jobs:
       - name: Checkout isolated science branch
         uses: actions/checkout@v4
         with:
-          ref: science/limb-model-workflow
+          ref: ${{ github.ref_name }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
