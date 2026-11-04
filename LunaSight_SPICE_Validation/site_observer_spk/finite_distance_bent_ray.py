@@ -189,23 +189,24 @@ def run_reference_tests() -> None:
     # Independent scalar quadrature of the force and its endpoint weighting.
     coefficient = -2.0 * gm / (c * c)
     force = lambda z: coefficient * impact / (impact * impact + z * z) ** 1.5
-    total, total_error = quad(force, z_source, z_observer, epsabs=1.0e-18, epsrel=1.0e-12)
     path_length = z_observer - z_source
-    # Integrate over dimensionless u in [0, 1]. Both independent endpoint
-    # references are angular integrals (radians), with separately scaled errors.
+    # Apply the full Jacobian and endpoint weight after u = l / L:
+    # (1/L) * (L-l) * f(l) * dl = L * (1-u) * f(L*u) * du.
+    # The resulting weighted integral is already the source direction change;
+    # do not divide it by L again.
     weighted, weighted_error = quad(
-        lambda u: (1.0 - u) * path_length * force(z_source + path_length * u),
+        lambda u: path_length * (1.0 - u) * force(z_source + path_length * u),
         0.0, 1.0, epsabs=1.0e-18, epsrel=2.0e-13,
     )
     total, total_error = quad(
         lambda u: path_length * force(z_source + path_length * u),
         0.0, 1.0, epsabs=1.0e-25, epsrel=2.0e-13,
     )
-    expected_source = -weighted / path_length
+    expected_source = -weighted
     expected_observer = expected_source + total
     actual_source = float(np.asarray(result["source_direction_change"])[0])
     actual_observer = float(np.asarray(result["observer_direction_change"])[0])
-    source_reference_error_rad = weighted_error / path_length
+    source_reference_error_rad = weighted_error
     tolerance = max(2.0e-14, 8.0 * (total_error + source_reference_error_rad))
     if abs(actual_source - expected_source) > tolerance:
         raise AssertionError("Source endpoint direction disagrees with independent quadrature.")
