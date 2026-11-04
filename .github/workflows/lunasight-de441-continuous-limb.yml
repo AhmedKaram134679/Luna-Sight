@@ -9,6 +9,7 @@ on:
     paths:
       - .github/workflows/lunasight-de441-continuous-limb.yml
       - LunaSight_SPICE_Validation/site_observer_spk/verify_de441_solar_bent_limb_continuity.py
+      - LunaSight_SPICE_Validation/site_observer_spk/compare_de441_limb_temporal_convergence.py
       - LunaSight_SPICE_Validation/site_observer_spk/verify_de441_solar_bent_limb_expanded.py
       - LunaSight_SPICE_Validation/site_observer_spk/finite_distance_bent_ray.py
       - LunaSight_SPICE_Validation/site_observer_spk/point_mass_light_deflection.py
