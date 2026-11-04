@@ -2,6 +2,12 @@ name: LunaSight DE441 Validation
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - science/limb-model-workflow
+    paths:
+      - .github/workflows/lunasight-de441-validation.yml
+      - LunaSight_SPICE_Validation/site_observer_spk/verify_de441_solar_bent_limb.py
   push:
     branches:
       - science/limb-model-workflow
