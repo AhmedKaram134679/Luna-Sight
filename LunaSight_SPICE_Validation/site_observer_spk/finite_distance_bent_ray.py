@@ -225,13 +225,12 @@ def run_reference_tests() -> None:
         [math.sin(angle), math.cos(angle), 0.0],
         [0.0, 0.0, 1.0],
     ])
+    shift = np.array([1e7, -2e7, 3e7])
     rotated = finite_endpoint_bent_ray(
-        rotation @ source, rotation @ observer, rotation @ mass + np.array([1e7, -2e7, 3e7])
+        rotation @ source, rotation @ observer, rotation @ mass
     )
     translated = finite_endpoint_bent_ray(
-        source + np.array([1e7, -2e7, 3e7]),
-        observer + np.array([1e7, -2e7, 3e7]),
-        mass + np.array([1e7, -2e7, 3e7]),
+        source + shift, observer + shift, mass + shift
     )
     for label, candidate in (("rotation", rotated), ("translation", translated)):
         if abs(float(candidate["source_direction_change_arcsec"])
