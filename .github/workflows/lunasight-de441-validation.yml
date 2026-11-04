@@ -8,6 +8,7 @@ on:
     paths:
       - .github/workflows/lunasight-de441-validation.yml
       - LunaSight_SPICE_Validation/site_observer_spk/finite_distance_bent_ray.py
+      - LunaSight_SPICE_Validation/site_observer_spk/verify_de441_bent_ray.py
 
 permissions:
   contents: read
@@ -88,3 +89,7 @@ jobs:
       - name: Verify fixed-endpoint finite-distance bent-ray reference
         working-directory: LunaSight_SPICE_Validation/site_observer_spk
         run: python finite_distance_bent_ray.py
+
+      - name: Verify DE441-bound fixed-endpoint solar bent ray
+        working-directory: LunaSight_SPICE_Validation/site_observer_spk
+        run: python verify_de441_bent_ray.py
