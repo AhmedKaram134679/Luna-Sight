@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import math
+import os
 from pathlib import Path
 
 import numpy as np
@@ -139,7 +140,10 @@ def main() -> None:
         print("site=longitude_200.0E_latitude_-88.45deg_altitude_0km")
         print("earth_radii_km=6378.137,6378.137,6356.752")
         print("historical_horizons_reference=2026-11-02T14:15:20.333553_UTC")
-        print("spice_kernel_ephemeris=DE440s; historical_horizons_ephemeris=DE441")
+        selected_spks = diag.selected_planetary_spk_paths()
+        print("spice_planetary_spk_files=" + ";".join(path.name for path in selected_spks))
+        print("spice_planetary_spk_selection=" + ("ENV_LUNASIGHT_PLANETARY_SPKS" if os.environ.get("LUNASIGHT_PLANETARY_SPKS", "").strip() else "DEFAULT_DE440S"))
+        print("historical_horizons_ephemeris=DE441")
         print("circular_proxy=SPICE_apparent_center_plus_equatorial_angular_radius")
         print("circular_proxy_is_exact_horizons_reproduction=NO")
 
