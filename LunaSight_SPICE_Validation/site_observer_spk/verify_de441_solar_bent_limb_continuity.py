@@ -31,6 +31,26 @@ MAX_POINT_STEP_KM = float(os.environ.get("LUNASIGHT_MAX_POINT_STEP_KM", "2.0"))
 MAX_DIRECTION_STEP_ARCSEC = float(os.environ.get("LUNASIGHT_MAX_DIRECTION_STEP_ARCSEC", "0.01"))
 
 
+def parallel_transport_basis(previous_axis, previous_u, axis):
+    """Transport azimuth orientation by the minimal rotation between axes."""
+    cosine = float(np.clip(np.dot(previous_axis, axis), -1.0, 1.0))
+    cross = np.cross(previous_axis, axis)
+    sine = float(np.linalg.norm(cross))
+    if sine > 1.0e-14:
+        rotation_axis = cross / sine
+        transported = (
+            previous_u * cosine
+            + np.cross(rotation_axis, previous_u) * sine
+            + rotation_axis * float(np.dot(rotation_axis, previous_u)) * (1.0 - cosine)
+        )
+    elif cosine >= 0.0:
+        transported = previous_u.copy()
+    else:
+        raise AssertionError("Observer-axis update is antipodal; azimuth transport is ambiguous.")
+    transported -= axis * float(np.dot(transported, axis))
+    return unit(transported)
+
+
 def main() -> None:
     configured = os.environ.get("LUNASIGHT_PLANETARY_SPKS", "").strip()
     selected = tuple(Path(item).name for item in configured.split(os.pathsep) if item)
@@ -47,6 +67,9 @@ def main() -> None:
         start_et = float(spice.str2et(START_UTC))
         epochs = [start_et + offset for offset in range(0, DURATION_SECONDS + 1, STEP_SECONDS)]
         previous = {}
+        previous_axis = None
+        previous_basis_u = None
+        max_point_step_record = None
         max_point_step = 0.0
         max_source_step_arcsec = 0.0
         max_observer_step_arcsec = 0.0
@@ -73,11 +96,16 @@ def main() -> None:
             if norm <= 1.0:
                 raise AssertionError("Observer is not outside the Earth ellipsoid.")
             axis = scaled_observer / norm
-            helper = np.array([0.0, 0.0, 1.0])
-            if abs(float(np.dot(axis, helper))) > 0.9:
-                helper = np.array([0.0, 1.0, 0.0])
-            basis_u = unit(np.cross(axis, helper))
+            if previous_axis is None:
+                helper = np.array([0.0, 0.0, 1.0])
+                if abs(float(np.dot(axis, helper))) > 0.9:
+                    helper = np.array([0.0, 1.0, 0.0])
+                basis_u = unit(np.cross(axis, helper))
+            else:
+                basis_u = parallel_transport_basis(previous_axis, previous_basis_u, axis)
             basis_v = unit(np.cross(axis, basis_u))
+            previous_axis = axis.copy()
+            previous_basis_u = basis_u.copy()
             h0 = 1.0 / norm
 
             for index in range(SAMPLE_COUNT):
@@ -127,7 +155,9 @@ def main() -> None:
                     point_step = float(np.linalg.norm(point_ssb - old_point))
                     source_step = angle_between(source_dir, old_source) * ARCSEC_PER_RAD
                     observer_step = angle_between(observer_dir, old_observer) * ARCSEC_PER_RAD
-                    max_point_step = max(max_point_step, point_step)
+                    if point_step > max_point_step:
+                        max_point_step = point_step
+                        max_point_step_record = (utc, index, point_step)
                     max_source_step_arcsec = max(max_source_step_arcsec, source_step)
                     max_observer_step_arcsec = max(max_observer_step_arcsec, observer_step)
                     max_h_step = max(max_h_step, abs(h - old_h))
@@ -142,7 +172,14 @@ def main() -> None:
                 max_reference = max(max_reference, ref_error)
 
         if max_point_step > MAX_POINT_STEP_KM:
-            raise AssertionError(f"Point continuity threshold exceeded: {max_point_step} km")
+            raise AssertionError(
+                "Point continuity threshold exceeded: "
+                f"max_step_km={max_point_step:.12g}, "
+                f"current_epoch_utc={max_point_step_record[0]}, "
+                f"azimuth_index={max_point_step_record[1]}, "
+                f"previous_epoch_utc={spice.et2utc(epochs[epochs.index(float(spice.str2et(max_point_step_record[0]))) - 1], 'ISOC', 3) if False else 'see CSV'}, "
+                f"limit_km={MAX_POINT_STEP_KM:.12g}"
+            )
         if max_source_step_arcsec > MAX_DIRECTION_STEP_ARCSEC:
             raise AssertionError(f"Source direction continuity threshold exceeded: {max_source_step_arcsec} arcsec")
         if max_observer_step_arcsec > MAX_DIRECTION_STEP_ARCSEC:
@@ -170,7 +207,7 @@ def main() -> None:
         print(f"max_tangency_residual={max_tangency:.12e}")
         print(f"max_surface_residual={max_surface:.12e}")
         print(f"max_independent_quadrature_vector_residual_rad={max_reference:.12e}")
-        print("azimuth_branch_correspondence=FIXED_INDEX_AND_CONTINUOUS_TANGENT_BASIS")
+        print("azimuth_branch_correspondence=PARALLEL_TRANSPORTED_TANGENT_BASIS")
         print("root_bracketing=PASS")
         print("corrected_tangency=PASS")
         print("triaxial_surface_constraint=PASS")
