@@ -50,8 +50,9 @@ def finite_distance_deflection(
     apparent sky direction (observer toward source) is therefore -unit(n+delta_n).
 
     The function rejects a zero-length ray and invalid physical parameters.
-    It does not silently accept a ray whose closest approach lies outside the
-    finite source-observer segment as a solar-grazing test.
+    The deflector's closest-approach plane may lie inside or outside the
+    finite source-observer segment. The integral is evaluated only over the
+    actual finite segment; no infinite-path or grazing approximation is used.
     """
     source = _vector3(source_position_km, "source_position_km")
     observer = _vector3(observer_position_km, "observer_position_km")
@@ -77,8 +78,6 @@ def finite_distance_deflection(
         raise ValueError("Unperturbed ray passes through the point-mass singularity.")
     if z_observer <= z_source:
         raise RuntimeError("Invalid source-to-observer path orientation.")
-    if not (z_source <= 0.0 <= z_observer):
-        raise ValueError("Deflector's closest-approach plane lies outside the finite ray segment.")
 
     source_radius = float(np.linalg.norm(source_from_mass))
     observer_radius = float(np.linalg.norm(observer_from_mass))
@@ -149,6 +148,34 @@ def run_reference_tests() -> None:
                   "vector transverse y component")
     _assert_close(float(vector_delta[2]), 0.0, 1.0e-15,
                   "vector longitudinal component")
+
+    # Finite segments that do not include closest approach are valid.
+    # Check both endpoints on the same side of the deflector's transverse
+    # closest-approach plane against direct integration over that segment.
+    outside_segment_cases = (
+        (2.0 * b, 8.0 * b, "closest approach before source"),
+        (-8.0 * b, -2.0 * b, "closest approach after observer"),
+    )
+    for z0, z1, label in outside_segment_cases:
+        finite_result = finite_distance_deflection(
+            np.array([b, 0.0, z0]),
+            np.array([b, 0.0, z1]),
+            np.zeros(3),
+        )
+        expected_integral, expected_error = quad(
+            lambda z: -2.0 * GM_SUN_KM3_S2 / (C_KM_S * C_KM_S)
+            * b / ((b * b + z * z) ** 1.5),
+            z0,
+            z1,
+            epsabs=1.0e-18,
+            epsrel=1.0e-12,
+        )
+        _assert_close(
+            float(np.asarray(finite_result["propagation_direction_change"])[0]),
+            expected_integral,
+            max(5.0e-15, 5.0 * expected_error),
+            label,
+        )
 
     # Direction convention and path-reversal test for a static monopole.
     # With b pointing away from the mass, the photon propagation direction
@@ -254,6 +281,7 @@ def run_reference_tests() -> None:
     print(f"quadrature_error_estimate_rad={quad_error:.6e}")
     print(f"asymptotic_solar_grazing_deflection_arcsec={solar_limit:.12g}")
     print("finite_endpoint_case=PASS")
+    print("closest_approach_outside_finite_segment=PASS")
     print("vector_scalar_consistency=PASS")
     print("propagation_vs_apparent_direction_sign=PASS")
     print("source_observer_path_reversal=PASS")
