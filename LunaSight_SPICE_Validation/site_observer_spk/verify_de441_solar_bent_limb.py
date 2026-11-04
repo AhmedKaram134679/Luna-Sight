@@ -247,7 +247,7 @@ def main() -> None:
         print(f"max_observer_direction_change_vs_geometric_arcsec={max_observer_change_arcsec:.12g}")
         print(f"max_tight_tolerance_direction_difference_arcsec={max_convergence_arcsec:.12g}")
         print(f"tangency_tolerance={TANGENCY_TOL:.3e}")
-                print("independent_scalar_quadrature=PASS")
+        print("independent_scalar_quadrature=PASS")
         print("corrected_surface_tangency=PASS")
         print("triaxial_surface_constraint=PASS")
         print("tolerance_convergence=PASS")
