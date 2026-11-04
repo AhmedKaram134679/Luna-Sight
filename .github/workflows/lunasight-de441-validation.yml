@@ -2,6 +2,11 @@ name: LunaSight DE441 Validation
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - science/limb-model-workflow
+    paths:
+      - .github/workflows/lunasight-de441-validation.yml
 
 permissions:
   contents: read
