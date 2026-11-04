@@ -236,7 +236,7 @@ def main() -> None:
                 float(np.linalg.norm(point_fixed - surface_point(h0))),
             )
             max_observer_change_arcsec = max(
-                max_observer_change_arcsec, angular_observer * ARCSEC_PER_RAD
+                max_observer_change_arcsec, geometric_observer_offset * ARCSEC_PER_RAD
             )
             max_source_change_arcsec = max(
                 max_source_change_arcsec, source_angle * ARCSEC_PER_RAD
