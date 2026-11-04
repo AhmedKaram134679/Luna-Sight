@@ -48,6 +48,8 @@ def finite_endpoint_bent_ray(
     *,
     gm_km3_s2: float = GM_SUN_KM3_S2,
     c_km_s: float = C_KM_S,
+    integration_epsabs: float = 1.0e-18,
+    integration_epsrel: float = 2.0e-12,
 ) -> dict[str, np.ndarray | float]:
     """Solve the first-order static-monopole ray with fixed finite endpoints.
 
@@ -73,6 +75,10 @@ def finite_endpoint_bent_ray(
         raise ValueError("GM must be finite and non-negative.")
     if not math.isfinite(c_km_s) or c_km_s <= 0.0:
         raise ValueError("Light speed must be finite and positive.")
+    if not math.isfinite(integration_epsabs) or integration_epsabs <= 0.0:
+        raise ValueError("Absolute integration tolerance must be finite and positive.")
+    if not math.isfinite(integration_epsrel) or integration_epsrel <= 0.0:
+        raise ValueError("Relative integration tolerance must be finite and positive.")
 
     segment = observer - source
     length = float(np.linalg.norm(segment))
@@ -115,8 +121,9 @@ def finite_endpoint_bent_ray(
         force = transverse_acceleration(distance)
         return np.concatenate((force, (length - distance) * force))
 
-    integrals, _ = quad_vec(
-        weighted_integrand, 0.0, length, epsabs=1.0e-18, epsrel=2.0e-12
+    integrals, endpoint_integral_error = quad_vec(
+        weighted_integrand, 0.0, length,
+        epsabs=integration_epsabs, epsrel=integration_epsrel,
     )
     total_direction_change = np.asarray(integrals[:3], dtype=float)
     weighted_direction_change = np.asarray(integrals[3:], dtype=float)
@@ -132,9 +139,10 @@ def finite_endpoint_bent_ray(
         )
         return source_change + np.asarray(partial, dtype=float)
 
-    closure, _ = quad_vec(
+    closure, closure_integral_error = quad_vec(
         displacement_integrand, 0.0, length,
-        epsabs=1.0e-10, epsrel=2.0e-10,
+        epsabs=max(integration_epsabs, 1.0e-14),
+        epsrel=max(integration_epsrel, 1.0e-12),
     )
     closure_norm = float(np.linalg.norm(closure))
     if closure_norm > max(1.0e-8, length * 1.0e-10):
@@ -154,6 +162,8 @@ def finite_endpoint_bent_ray(
         "segment_length_km": length,
         "impact_parameter_km": impact,
         "transverse_displacement_closure_km": closure_norm,
+        "endpoint_integral_error_estimate": float(endpoint_integral_error),
+        "closure_integral_error_estimate_km": float(closure_integral_error),
         "source_direction_change_arcsec": float(
             np.linalg.norm(source_change) * ARCSEC_PER_RAD
         ),
@@ -180,19 +190,51 @@ def run_reference_tests() -> None:
     coefficient = -2.0 * gm / (c * c)
     force = lambda z: coefficient * impact / (impact * impact + z * z) ** 1.5
     total, total_error = quad(force, z_source, z_observer, epsabs=1.0e-18, epsrel=1.0e-12)
+    path_length = z_observer - z_source
+    # Integrate over dimensionless u in [0, 1]. This keeps the independent
+    # reference well-scaled and makes the source-direction integral directly
+    # angular (radians), avoiding the previous radian-kilometre error label.
     weighted, weighted_error = quad(
-        lambda z: (z_observer - z) * force(z),
-        z_source, z_observer, epsabs=1.0e-10, epsrel=1.0e-12,
+        lambda u: (1.0 - u) * path_length * force(z_source + path_length * u),
+        0.0, 1.0, epsabs=1.0e-25, epsrel=2.0e-13,
     )
-    expected_source = -weighted / (z_observer - z_source)
+    total, total_error = quad(
+        lambda u: path_length * force(z_source + path_length * u),
+        0.0, 1.0, epsabs=1.0e-25, epsrel=2.0e-13,
+    )
+    expected_source = -weighted / path_length
     expected_observer = expected_source + total
     actual_source = float(np.asarray(result["source_direction_change"])[0])
     actual_observer = float(np.asarray(result["observer_direction_change"])[0])
-    tolerance = max(2.0e-14, 8.0 * (total_error + weighted_error / (z_observer-z_source)))
+    source_reference_error_rad = weighted_error / path_length
+    tolerance = max(2.0e-14, 8.0 * (total_error + source_reference_error_rad))
     if abs(actual_source - expected_source) > tolerance:
         raise AssertionError("Source endpoint direction disagrees with independent quadrature.")
     if abs(actual_observer - expected_observer) > tolerance:
         raise AssertionError("Observer endpoint direction disagrees with independent quadrature.")
+
+    # Tightening production tolerances must converge to the independent scalar reference.
+    tight = finite_endpoint_bent_ray(
+        source, observer, mass, integration_epsabs=1.0e-24,
+        integration_epsrel=2.0e-14,
+    )
+    tight_source = float(np.asarray(tight["source_direction_change"])[0])
+    tight_observer = float(np.asarray(tight["observer_direction_change"])[0])
+    if abs(tight_source - expected_source) > max(5.0e-14, 16.0 * source_reference_error_rad):
+        raise AssertionError("Tight source endpoint result failed independent convergence check.")
+    if abs(tight_observer - expected_observer) > max(5.0e-14, 16.0 * total_error):
+        raise AssertionError("Tight observer endpoint result failed independent convergence check.")
+
+    # Symmetric endpoints around closest approach have equal and opposite
+    # first-order endpoint corrections for this static monopole geometry.
+    symmetric_source = np.array([impact, 0.0, -4.0 * impact])
+    symmetric_observer = np.array([impact, 0.0, 4.0 * impact])
+    symmetric = finite_endpoint_bent_ray(symmetric_source, symmetric_observer, mass)
+    symmetric_source_change = np.asarray(symmetric["source_direction_change"])
+    symmetric_observer_change = np.asarray(symmetric["observer_direction_change"])
+    if not np.allclose(symmetric_source_change, -symmetric_observer_change,
+                       rtol=0.0, atol=2.0e-14):
+        raise AssertionError("Symmetric endpoint directions do not have equal/opposite corrections.")
 
     # A fixed-endpoint ray must return to the prescribed observer position.
     if float(result["transverse_displacement_closure_km"]) > 1.0e-8:
@@ -244,8 +286,14 @@ def run_reference_tests() -> None:
     print("model=STATIC_POINT_MASS_FIRST_ORDER_PPN_GAMMA_1_FIXED_ENDPOINTS")
     print(f"source_endpoint_direction_change_arcsec={result['source_direction_change_arcsec']:.12g}")
     print(f"observer_endpoint_direction_change_arcsec={result['observer_direction_change_arcsec']:.12g}")
-    print(f"independent_source_quadrature_error_rad={weighted_error:.6e}")
+    print(f"independent_source_quadrature_error_rad={source_reference_error_rad:.6e}")
     print(f"independent_observer_quadrature_error_rad={total_error:.6e}")
+    print(f"production_endpoint_integral_error_estimate={result['endpoint_integral_error_estimate']:.6e}")
+    print(f"tight_endpoint_integral_error_estimate={tight['endpoint_integral_error_estimate']:.6e}")
+    print(f"independent_source_reference_error_rad={source_reference_error_rad:.6e}")
+    print(f"independent_observer_reference_error_rad={total_error:.6e}")
+    print("tight_tolerance_convergence=PASS")
+    print("symmetric_endpoint_geometry=PASS")
     print(f"transverse_displacement_closure_km={result['transverse_displacement_closure_km']:.6e}")
     print("endpoint_direction_reference=PASS")
     print("fixed_endpoint_boundary_conditions=PASS")
