@@ -212,17 +212,34 @@ def run_reference_tests() -> None:
     if abs(actual_observer - expected_observer) > tolerance:
         raise AssertionError("Observer endpoint direction disagrees with independent quadrature.")
 
-    # Tightening production tolerances must converge to the independent scalar reference.
+    # Sweep three independent production tolerance settings and compare both
+    # local endpoint directions against scalar quadrature references.
+    tolerance_cases = (
+        ("coarse", 1.0e-12, 1.0e-9),
+        ("standard", 1.0e-18, 2.0e-12),
+        ("tight", 1.0e-24, 2.0e-14),
+    )
+    tolerance_results = {}
+    for label, epsabs, epsrel in tolerance_cases:
+        candidate = finite_endpoint_bent_ray(
+            source, observer, mass,
+            integration_epsabs=epsabs, integration_epsrel=epsrel,
+        )
+        candidate_source = float(np.asarray(candidate["source_direction_change"])[0])
+        candidate_observer = float(np.asarray(candidate["observer_direction_change"])[0])
+        if abs(candidate_source - expected_source) > max(8.0e-14, 32.0 * source_reference_error_rad):
+            raise AssertionError(f"{label} source endpoint failed independent reference check.")
+        if abs(candidate_observer - expected_observer) > max(8.0e-14, 32.0 * total_error):
+            raise AssertionError(f"{label} observer endpoint failed independent reference check.")
+        tolerance_results[label] = (candidate_source, candidate_observer)
     tight = finite_endpoint_bent_ray(
         source, observer, mass, integration_epsabs=1.0e-24,
         integration_epsrel=2.0e-14,
     )
-    tight_source = float(np.asarray(tight["source_direction_change"])[0])
-    tight_observer = float(np.asarray(tight["observer_direction_change"])[0])
-    if abs(tight_source - expected_source) > max(5.0e-14, 16.0 * source_reference_error_rad):
-        raise AssertionError("Tight source endpoint result failed independent convergence check.")
-    if abs(tight_observer - expected_observer) > max(5.0e-14, 16.0 * total_error):
-        raise AssertionError("Tight observer endpoint result failed independent convergence check.")
+    if abs(tolerance_results["tight"][0] - tolerance_results["standard"][0]) > 5.0e-14:
+        raise AssertionError("Source endpoint did not converge when tolerances were tightened.")
+    if abs(tolerance_results["tight"][1] - tolerance_results["standard"][1]) > 5.0e-14:
+        raise AssertionError("Observer endpoint did not converge when tolerances were tightened.")
 
     # Symmetric endpoints around closest approach have equal and opposite
     # first-order endpoint corrections for this static monopole geometry.
@@ -291,6 +308,7 @@ def run_reference_tests() -> None:
     print(f"tight_endpoint_integral_error_estimate={tight['endpoint_integral_error_estimate']:.6e}")
     print(f"independent_source_reference_error_rad={source_reference_error_rad:.6e}")
     print(f"independent_observer_reference_error_rad={total_error:.6e}")
+    print("tolerance_sweep=coarse;standard;tight")
     print("tight_tolerance_convergence=PASS")
     print("symmetric_endpoint_geometry=PASS")
     print(f"transverse_displacement_closure_km={result['transverse_displacement_closure_km']:.6e}")
