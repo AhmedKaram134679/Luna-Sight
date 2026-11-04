@@ -71,6 +71,7 @@ def main() -> None:
         previous_basis_u = None
         max_point_step_record = None
         max_point_step = 0.0
+        max_ssb_point_step = 0.0
         max_source_step_arcsec = 0.0
         max_observer_step_arcsec = 0.0
         max_tangency = 0.0
@@ -168,7 +169,7 @@ def main() -> None:
                 else:
                     rows.append((utc, index, h, "", "", "", "", abs(residual),
                                  surface_residual, ref_error))
-                previous[index] = (point_ssb, source_dir, observer_dir, h)
+                previous[index] = (point_fixed.copy(), point_ssb.copy(), source_dir, observer_dir, h, utc)
                 max_tangency = max(max_tangency, abs(residual))
                 max_surface = max(max_surface, surface_residual)
                 max_reference = max(max_reference, ref_error)
