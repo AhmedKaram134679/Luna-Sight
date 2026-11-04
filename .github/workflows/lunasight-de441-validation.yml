@@ -2,13 +2,21 @@ name: LunaSight DE441 Validation
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches:
       - science/limb-model-workflow
     paths:
       - .github/workflows/lunasight-de441-validation.yml
+      - LunaSight_SPICE_Validation/site_observer_spk/verify_de441_solar_bent_limb.py
+  push:
+    branches:
+      - science/limb-model-workflow
+      - science/de441-solar-bent-limb
+    paths:
+      - .github/workflows/lunasight-de441-validation.yml
       - LunaSight_SPICE_Validation/site_observer_spk/finite_distance_bent_ray.py
       - LunaSight_SPICE_Validation/site_observer_spk/verify_de441_bent_ray.py
+      - LunaSight_SPICE_Validation/site_observer_spk/verify_de441_solar_bent_limb.py
 
 permissions:
   contents: read
@@ -27,7 +35,7 @@ jobs:
       - name: Checkout isolated science branch
         uses: actions/checkout@v4
         with:
-          ref: science/limb-model-workflow
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -93,3 +101,16 @@ jobs:
       - name: Verify DE441-bound fixed-endpoint solar bent ray
         working-directory: LunaSight_SPICE_Validation/site_observer_spk
         run: python verify_de441_bent_ray.py
+
+      - name: Verify DE441 solar-deflected triaxial limb tangency
+        working-directory: LunaSight_SPICE_Validation/site_observer_spk
+        run: python verify_de441_solar_bent_limb.py | tee de441_solar_bent_limb_results.txt
+
+      - name: Upload solar limb validation results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunasight-de441-solar-bent-limb-results
+          path: LunaSight_SPICE_Validation/site_observer_spk/de441_solar_bent_limb_results.txt
+          if-no-files-found: ignore
+          retention-days: 30
