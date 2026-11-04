@@ -1,0 +1,77 @@
+name: LunaSight DE441 Validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lunasight-de441-validation
+  cancel-in-progress: false
+
+jobs:
+  verify-de441:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      LUNASIGHT_PLANETARY_SPKS: ${{ github.workspace }}/LunaSight_SPICE_Validation/kernels/de441_part-1.bsp:${{ github.workspace }}/LunaSight_SPICE_Validation/kernels/de441_part-2.bsp
+    steps:
+      - name: Checkout isolated science branch
+        uses: actions/checkout@v4
+        with:
+          ref: science/limb-model-workflow
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned numerical dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy==2.1.3 scipy==1.14.1 spiceypy==6.0.0
+
+      - name: Download official DE441 planetary SPK parts
+        working-directory: LunaSight_SPICE_Validation/kernels
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 5 --retry-all-errors --output de441_part-1.bsp.part https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de441_part-1.bsp
+          mv de441_part-1.bsp.part de441_part-1.bsp
+          curl --fail --location --retry 5 --retry-all-errors --output de441_part-2.bsp.part https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de441_part-2.bsp
+          mv de441_part-2.bsp.part de441_part-2.bsp
+          test -s de441_part-1.bsp
+          test -s de441_part-2.bsp
+          sha256sum de441_part-1.bsp de441_part-2.bsp
+
+      - name: Verify DE441 body coverage and compare DE440s states
+        working-directory: LunaSight_SPICE_Validation/site_observer_spk
+        run: python verify_de441_ephemeris.py
+
+      - name: Verify lunar surface observer under DE441
+        run: python LunaSight_SPICE_Validation/site_observer_spk/verify_surface_observer.py
+
+      - name: Verify geometry and limbpt under DE441
+        run: python LunaSight_SPICE_Validation/site_observer_spk/verify_limbpt_and_geometry.py
+
+      - name: Verify independent apparent limb under DE441
+        run: python LunaSight_SPICE_Validation/site_observer_spk/verify_apparent_limb.py
+
+      - name: Solve apparent limb crossing under DE441
+        run: python LunaSight_SPICE_Validation/site_observer_spk/solve_apparent_limb_crossing.py
+
+      - name: Reconcile Horizons and SPICE limb definitions under DE441
+        run: python LunaSight_SPICE_Validation/site_observer_spk/reconcile_horizons_spice_limb.py
+
+      - name: Isolate limb shape under DE441 corrections
+        run: python LunaSight_SPICE_Validation/site_observer_spk/matched_correction_limb_shape_isolation.py
+
+      - name: Audit gravitational deflection scope under DE441
+        run: python LunaSight_SPICE_Validation/site_observer_spk/gravitational_deflection_reconciliation.py
+
+      - name: Verify static point-mass deflection reference
+        run: python LunaSight_SPICE_Validation/site_observer_spk/point_mass_light_deflection.py
+
+      - name: Verify finite-distance solar deflection reference
+        working-directory: LunaSight_SPICE_Validation/site_observer_spk
+        run: python finite_distance_solar_deflection.py
