@@ -171,6 +171,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lunasight-de441-convergence-report
-          path: LunaSight_SPICE_Validation/site_observer_spk/de441_limb_convergence_comparison.csv
+          path: |
+            LunaSight_SPICE_Validation/site_observer_spk/de441_limb_convergence_comparison.csv
+            LunaSight_SPICE_Validation/site_observer_spk/de441_limb_convergence_comparison_overlap_report.csv
+            LunaSight_SPICE_Validation/site_observer_spk/de441_limb_convergence_comparison_acceptance_summary.csv
           if-no-files-found: error
           retention-days: 30
