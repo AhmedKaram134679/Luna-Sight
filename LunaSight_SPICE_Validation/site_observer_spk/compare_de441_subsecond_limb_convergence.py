@@ -156,13 +156,14 @@ def compare_pair(coarse: dict, fine: dict, label: str) -> dict:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--one-second", type=Path, required=True)
+    parser.add_argument("--one-glob", required=True)
     parser.add_argument("--half-glob", required=True)
     parser.add_argument("--quarter-glob", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
-    one = read(args.one_second)
+    one_paths = [Path(x) for x in sorted(glob.glob(args.one_glob))]
+    one, one_overlap = merge_shards(one_paths, 241, "1-second")
     half_paths = [Path(x) for x in sorted(glob.glob(args.half_glob))]
     quarter_paths = [Path(x) for x in sorted(glob.glob(args.quarter_glob))]
     half, half_overlap = merge_shards(half_paths, 481, "0.5-second")
@@ -206,6 +207,8 @@ def main():
         print(f"{label}_epoch_count={count}")
         print(f"{label}_branch_count={BRANCHES}")
         print(f"{label}_complete_grid_and_branch_coverage=PASS")
+    print(f"one_second_shard_count={len(one_paths)}")
+    print(f"one_second_overlap_duplicate_rows={one_overlap}")
     print(f"half_second_shard_count={len(half_paths)}")
     print(f"quarter_second_shard_count={len(quarter_paths)}")
     print(f"half_second_overlap_duplicate_rows={half_overlap}")
