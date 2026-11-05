@@ -56,9 +56,9 @@ def read(path: Path) -> dict:
         return rows
 
 
-def merge_shards(paths: list[Path], expected_count: int, label: str) -> tuple[dict, int]:
-    if len(paths) != 4:
-        raise AssertionError(f"{label}: expected 4 shard files, got {len(paths)}")
+def merge_shards(paths: list[Path], expected_shards: int, label: str) -> tuple[dict, int]:
+    if len(paths) != expected_shards:
+        raise AssertionError(f"{label}: expected {expected_shards} shard files, got {len(paths)}")
     merged, overlaps = {}, 0
     for path in sorted(paths):
         for key, row in read(path).items():
@@ -163,11 +163,11 @@ def main():
     args = parser.parse_args()
 
     one_paths = [Path(x) for x in sorted(glob.glob(args.one_glob))]
-    one, one_overlap = merge_shards(one_paths, 241, "1-second")
+    one, one_overlap = merge_shards(one_paths, 4, "1-second")
     half_paths = [Path(x) for x in sorted(glob.glob(args.half_glob))]
     quarter_paths = [Path(x) for x in sorted(glob.glob(args.quarter_glob))]
-    half, half_overlap = merge_shards(half_paths, 481, "0.5-second")
-    quarter, quarter_overlap = merge_shards(quarter_paths, 961, "0.25-second")
+    half, half_overlap = merge_shards(half_paths, 4, "0.5-second")
+    quarter, quarter_overlap = merge_shards(quarter_paths, 12, "0.25-second")
     counts = {
         "1s": validate_grid(one, 1.0, "1-second"),
         "0.5s": validate_grid(half, 0.5, "0.5-second"),
