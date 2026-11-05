@@ -21,6 +21,11 @@ concurrency:
   group: lunasight-de441-subsecond-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  LUNASIGHT_PLANETARY_SPKS: ${{ github.workspace }}/LunaSight_SPICE_Validation/kernels/de441_part-1.bsp:${{ github.workspace }}/LunaSight_SPICE_Validation/kernels/de441_part-2.bsp
+  LUNASIGHT_MAX_POINT_STEP_KM: "100"
+  LUNASIGHT_MAX_DIRECTION_STEP_ARCSEC: "0.1"
+
 jobs:
   sweep:
     name: ${{ matrix.step }}s sweep shard ${{ matrix.shard }}
