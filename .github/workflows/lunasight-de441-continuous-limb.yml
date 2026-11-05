@@ -27,6 +27,7 @@ concurrency:
 env:
   LUNASIGHT_PLANETARY_SPKS: ${{ github.workspace }}/LunaSight_SPICE_Validation/kernels/de441_part-1.bsp:${{ github.workspace }}/LunaSight_SPICE_Validation/kernels/de441_part-2.bsp
   LUNASIGHT_CONTINUITY_START_UTC: "2026-11-02T14:12:00"
+  LUNASIGHT_CONTINUITY_BASIS_ANCHOR_UTC: "2026-11-02T14:12:00"
   LUNASIGHT_MAX_POINT_STEP_KM: "100"
   LUNASIGHT_MAX_DIRECTION_STEP_ARCSEC: "0.1"
 
