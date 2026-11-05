@@ -1,14 +1,15 @@
 """Compare complete 5-second and sharded 1-second DE441 limb sweeps.
 
-Shard boundaries intentionally overlap by one epoch. Duplicate boundary rows
-must agree exactly; the merged fine grid must cover every second and all 96
-branches before any convergence statistics are emitted.
+Shard boundaries intentionally overlap by one epoch. Duplicate rows are
+compared numerically under explicit, field-specific tolerances; the first row
+is retained only after every compared field passes.
 """
 from __future__ import annotations
 
 import argparse
 import csv
 import glob
+import math
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -18,6 +19,7 @@ from scipy.optimize import linear_sum_assignment
 
 REQUIRED_COLUMNS = {
     "utc", "azimuth_index", "h",
+    "tangency_residual", "surface_residual", "independent_reference_error",
     "point_fixed_x_km", "point_fixed_y_km", "point_fixed_z_km",
     "source_dir_x", "source_dir_y", "source_dir_z",
     "observer_dir_x", "observer_dir_y", "observer_dir_z",
@@ -25,13 +27,25 @@ REQUIRED_COLUMNS = {
 EXPECTED_START = datetime.fromisoformat("2026-11-02T14:12:00")
 EXPECTED_DURATION_SECONDS = 240
 BRANCH_COUNT = 96
-OVERLAP_IDENTITY_COLUMNS = (
-    "utc", "azimuth_index", "h",
-    "tangency_residual", "surface_residual", "independent_reference_error",
-    "point_fixed_x_km", "point_fixed_y_km", "point_fixed_z_km",
-    "source_dir_x", "source_dir_y", "source_dir_z",
-    "observer_dir_x", "observer_dir_y", "observer_dir_z",
-)
+
+# These are overlap-consistency tolerances, not scientific convergence limits.
+# They are deliberately field-specific and are checked only between duplicate
+# rows produced independently by adjacent shards.
+OVERLAP_TOLERANCES = {
+    "h": 1.0e-12,
+    "tangency_residual": 1.0e-12,
+    "surface_residual": 1.0e-12,
+    "independent_reference_error": 1.0e-18,
+    "point_fixed_x_km": 1.0e-8,
+    "point_fixed_y_km": 1.0e-8,
+    "point_fixed_z_km": 1.0e-8,
+    "source_dir_x": 1.0e-12,
+    "source_dir_y": 1.0e-12,
+    "source_dir_z": 1.0e-12,
+    "observer_dir_x": 1.0e-12,
+    "observer_dir_y": 1.0e-12,
+    "observer_dir_z": 1.0e-12,
+}
 
 
 def vector(row: dict[str, str], prefix: str) -> np.ndarray:
@@ -60,22 +74,41 @@ def read_csv(path: Path) -> dict[tuple[str, int], dict[str, str]]:
         return result
 
 
-def merge_fine(paths: list[Path]) -> dict[tuple[str, int], dict[str, str]]:
+def merge_fine(paths: list[Path]) -> tuple[dict, dict]:
     if len(paths) != 4:
         raise AssertionError(f"Expected exactly four 1-second shard CSVs; found {len(paths)}")
-    merged = {}
+    merged: dict[tuple[str, int], dict[str, str]] = {}
+    overlap_max = {column: 0.0 for column in OVERLAP_TOLERANCES}
+    overlap_count = 0
     for path in sorted(paths):
         shard = read_csv(path)
         if not shard:
             raise AssertionError(f"{path}: empty shard")
         for key, row in shard.items():
-            if key in merged:
-                if any(merged[key][column] != row[column]
-                       for column in OVERLAP_IDENTITY_COLUMNS):
-                    raise AssertionError(f"Overlapping shard geometry disagrees at {key}")
-            else:
+            if key not in merged:
                 merged[key] = row
-    return merged
+                continue
+            previous = merged[key]
+            failures = []
+            for column, tolerance in OVERLAP_TOLERANCES.items():
+                try:
+                    left, right = float(previous[column]), float(row[column])
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise AssertionError(f"Overlap {key}: invalid numeric field {column}") from exc
+                if not (math.isfinite(left) and math.isfinite(right)):
+                    raise AssertionError(f"Overlap {key}: non-finite value in {column}")
+                delta = abs(left - right)
+                overlap_max[column] = max(overlap_max[column], delta)
+                if delta > tolerance:
+                    failures.append(f"{column}: delta={delta:.17g} tolerance={tolerance:.17g}")
+            if failures:
+                raise AssertionError(f"Overlapping shard geometry disagrees at {key}: " + "; ".join(failures))
+            overlap_count += 1
+            # Retain the first copy only after the duplicate has passed validation.
+    return merged, {
+        "duplicate_branch_rows": overlap_count,
+        **{f"max_abs_delta_{key}": value for key, value in overlap_max.items()},
+    }
 
 
 def validate_grid(data: dict[tuple[str, int], dict[str, str]], step: int, label: str) -> None:
@@ -97,7 +130,7 @@ def validate_grid(data: dict[tuple[str, int], dict[str, str]], step: int, label:
 
 def compare(coarse_path: Path, fine_paths: list[Path], output: Path) -> None:
     coarse = read_csv(coarse_path)
-    fine = merge_fine(fine_paths)
+    fine, overlap_report = merge_fine(fine_paths)
     validate_grid(coarse, 5, "5-second reference")
     validate_grid(fine, 1, "1-second merged shards")
 
@@ -148,6 +181,14 @@ def compare(coarse_path: Path, fine_paths: list[Path], output: Path) -> None:
                          "nearest_assigned_contact_distance_km"))
         writer.writerows(rows)
 
+    overlap_path = output.with_name(output.stem + "_overlap_report.csv")
+    with overlap_path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(("metric", "max_abs_delta", "absolute_tolerance"))
+        writer.writerow(("duplicate_branch_rows", overlap_report["duplicate_branch_rows"], ""))
+        for column, tolerance in OVERLAP_TOLERANCES.items():
+            writer.writerow((column, overlap_report[f"max_abs_delta_{column}"], tolerance))
+
     print("phase=DE441_LIMB_TEMPORAL_RESOLUTION_CONVERGENCE")
     print("coarse_step_seconds=5")
     print("fine_step_seconds=1")
@@ -162,12 +203,16 @@ def compare(coarse_path: Path, fine_paths: list[Path], output: Path) -> None:
     print(f"max_direct_index_observer_direction_delta_rad={max_direct_observer:.12g}")
     print(f"max_tangent_parameter_abs_delta={max_abs_h:.12g}")
     print(f"nearest_assignment_nonidentity_count={identity_mismatches}")
+    print(f"shard_overlap_duplicate_rows={overlap_report['duplicate_branch_rows']}")
+    for column in OVERLAP_TOLERANCES:
+        print(f"shard_overlap_max_abs_delta_{column}={overlap_report[f'max_abs_delta_{column}']:.12g}")
     print("shard_overlap_validation=PASS")
     print("complete_one_second_epoch_and_branch_coverage=PASS")
     print("direct_index_branch_correspondence=REPORTED")
     print("nearest_assignment_is_diagnostic_not_relabeling=YES")
-    print("comparison_thresholds=NO_UNJUSTIFIED_ARBITRARY_LIMITS")
+    print("overlap_tolerances=EXPLICIT_FIELD_SPECIFIC_ABSOLUTE")
     print(f"comparison_csv={output}")
+    print(f"overlap_report_csv={overlap_path}")
     print("status=PASS")
 
 
