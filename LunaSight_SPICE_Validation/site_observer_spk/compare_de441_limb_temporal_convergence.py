@@ -28,9 +28,19 @@ EXPECTED_START = datetime.fromisoformat("2026-11-02T14:12:00")
 EXPECTED_DURATION_SECONDS = 240
 BRANCH_COUNT = 96
 
-# These are overlap-consistency tolerances, not scientific convergence limits.
+# Overlap tolerances validate duplicate shard rows; acceptance limits below
+# are the separately declared numerical-resolution comparison criteria.
 # They are deliberately field-specific and are checked only between duplicate
 # rows produced independently by adjacent shards.
+ACCEPTANCE_LIMITS = {
+    # 1 mm contact-location agreement at common epochs.
+    "contact_delta_km": 1.0e-6,
+    # 1 milliarcsecond angular agreement at common epochs.
+    "direction_delta_rad": math.radians(1.0 / 3_600_000.0),
+    # Branch identity must remain unchanged under nearest-point diagnostics.
+    "nearest_assignment_nonidentity_count": 0,
+}
+
 OVERLAP_TOLERANCES = {
     "h": 1.0e-12,
     "tangency_residual": 1.0e-12,
@@ -181,6 +191,26 @@ def compare(coarse_path: Path, fine_paths: list[Path], output: Path) -> None:
                          "nearest_assigned_contact_distance_km"))
         writer.writerows(rows)
 
+    # Independent acceptance decision: these limits are explicit project criteria,
+    # not a claim of absolute physical accuracy or mathematical convergence.
+    acceptance_checks = {
+        "max_direct_index_contact_delta_km": max_direct_point <= ACCEPTANCE_LIMITS["contact_delta_km"],
+        "max_direct_index_source_direction_delta_rad": max_direct_source <= ACCEPTANCE_LIMITS["direction_delta_rad"],
+        "max_direct_index_observer_direction_delta_rad": max_direct_observer <= ACCEPTANCE_LIMITS["direction_delta_rad"],
+        "nearest_assignment_nonidentity_count": identity_mismatches == ACCEPTANCE_LIMITS["nearest_assignment_nonidentity_count"],
+    }
+    acceptance_status = "PASS" if all(acceptance_checks.values()) else "FAIL"
+
+    summary_path = output.with_name(output.stem + "_acceptance_summary.csv")
+    with summary_path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(("metric", "observed_value", "acceptance_limit", "unit", "status"))
+        writer.writerow(("max_direct_index_contact_delta_km", max_direct_point, ACCEPTANCE_LIMITS["contact_delta_km"], "km", "PASS" if acceptance_checks["max_direct_index_contact_delta_km"] else "FAIL"))
+        writer.writerow(("max_direct_index_source_direction_delta_rad", max_direct_source, ACCEPTANCE_LIMITS["direction_delta_rad"], "rad", "PASS" if acceptance_checks["max_direct_index_source_direction_delta_rad"] else "FAIL"))
+        writer.writerow(("max_direct_index_observer_direction_delta_rad", max_direct_observer, ACCEPTANCE_LIMITS["direction_delta_rad"], "rad", "PASS" if acceptance_checks["max_direct_index_observer_direction_delta_rad"] else "FAIL"))
+        writer.writerow(("nearest_assignment_nonidentity_count", identity_mismatches, ACCEPTANCE_LIMITS["nearest_assignment_nonidentity_count"], "count", "PASS" if acceptance_checks["nearest_assignment_nonidentity_count"] else "FAIL"))
+        writer.writerow(("acceptance_status", acceptance_status, "all criteria must pass", "", acceptance_status))
+
     overlap_path = output.with_name(output.stem + "_overlap_report.csv")
     with overlap_path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
@@ -211,9 +241,16 @@ def compare(coarse_path: Path, fine_paths: list[Path], output: Path) -> None:
     print("direct_index_branch_correspondence=REPORTED")
     print("nearest_assignment_is_diagnostic_not_relabeling=YES")
     print("overlap_tolerances=EXPLICIT_FIELD_SPECIFIC_ABSOLUTE")
+    print(f"acceptance_contact_limit_km={ACCEPTANCE_LIMITS['contact_delta_km']:.12g}")
+    print(f"acceptance_direction_limit_rad={ACCEPTANCE_LIMITS['direction_delta_rad']:.12g}")
+    print(f"acceptance_branch_identity_limit={ACCEPTANCE_LIMITS['nearest_assignment_nonidentity_count']}")
+    print(f"acceptance_status={acceptance_status}")
+    print(f"acceptance_summary_csv={summary_path}")
     print(f"comparison_csv={output}")
     print(f"overlap_report_csv={overlap_path}")
-    print("status=PASS")
+    print(f"status={'PASS' if acceptance_status == 'PASS' else 'FAIL'}")
+    if acceptance_status != "PASS":
+        raise AssertionError("5s-to-1s comparison failed the declared numerical acceptance criteria.")
 
 
 def main() -> None:
