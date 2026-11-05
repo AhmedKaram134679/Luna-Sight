@@ -83,6 +83,48 @@ def main() -> None:
         max_point_second_difference_km = 0.0
         rows = []
 
+        # Reconstruct the exact parallel-transported azimuth basis from one
+        # global anchor. This makes independently executed time shards retain
+        # the same branch indices as a single uninterrupted run.
+        anchor_utc = os.environ.get(
+            "LUNASIGHT_CONTINUITY_BASIS_ANCHOR_UTC", START_UTC
+        ).strip()
+        anchor_et = float(spice.str2et(anchor_utc))
+        elapsed = start_et - anchor_et
+        if elapsed < -1.0e-9 or abs(elapsed - round(elapsed)) > 1.0e-6:
+            raise ValueError("Shard start must be an integer second at/after the basis anchor.")
+        anchor_steps = int(round(elapsed))
+        if anchor_steps:
+            radii_anchor = np.asarray(spice.bodvrd("EARTH", "RADII", 3)[1], dtype=float)
+            for anchor_offset in range(anchor_steps + 1):
+                anchor_sample_et = anchor_et + anchor_offset
+                anchor_earth_state, _ = spice.spkezr(
+                    "EARTH", anchor_sample_et, FRAME, "NONE", "SOLAR SYSTEM BARYCENTER"
+                )
+                anchor_observer_state, _ = spice.spkezr(
+                    diag.SITE_NAME, anchor_sample_et, FRAME, "NONE", "SOLAR SYSTEM BARYCENTER"
+                )
+                anchor_rotation = np.asarray(
+                    spice.pxform(EARTH_FRAME, FRAME, anchor_sample_et), dtype=float
+                )
+                anchor_observer_fixed = anchor_rotation.T @ (
+                    np.asarray(anchor_observer_state[:3], dtype=float)
+                    - np.asarray(anchor_earth_state[:3], dtype=float)
+                )
+                anchor_scaled_observer = anchor_observer_fixed / radii_anchor
+                anchor_axis = unit(anchor_scaled_observer)
+                if anchor_offset == 0:
+                    helper = np.array([0.0, 0.0, 1.0])
+                    if abs(float(np.dot(anchor_axis, helper))) > 0.9:
+                        helper = np.array([0.0, 1.0, 0.0])
+                    anchor_basis_u = unit(np.cross(anchor_axis, helper))
+                else:
+                    anchor_basis_u = parallel_transport_basis(
+                        previous_axis, previous_basis_u, anchor_axis
+                    )
+                previous_axis = anchor_axis.copy()
+                previous_basis_u = anchor_basis_u.copy()
+
         for epoch_index, et in enumerate(epochs):
             utc = spice.et2utc(et, "ISOC", 3)
             earth_state, _ = spice.spkezr("EARTH", et, FRAME, "NONE", "SOLAR SYSTEM BARYCENTER")
