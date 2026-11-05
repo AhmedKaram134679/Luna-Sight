@@ -115,7 +115,7 @@ def compare_pair(coarse: dict, fine: dict, label: str) -> dict:
     for (utc, branch), row in fine.items():
         fine_epochs[utc][branch] = row
     common = sorted(set(coarse_epochs) & set(fine_epochs))
-    expected_common = round(DURATION / (2 if label == "1s_vs_0.5s" else 4)) + 1
+    expected_common = round(DURATION / (1.0 if label == "1s_vs_0.5s" else 0.5)) + 1
     if len(common) != expected_common:
         raise AssertionError(f"{label}: expected {expected_common} common epochs, got {len(common)}")
     point_deltas, source_deltas, observer_deltas = [], [], []
