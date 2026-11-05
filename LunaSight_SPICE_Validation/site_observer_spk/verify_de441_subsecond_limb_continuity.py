@@ -93,13 +93,14 @@ def main() -> None:
         ).strip()
         anchor_et = float(spice.str2et(anchor_utc))
         elapsed = start_et - anchor_et
-        if elapsed < -1.0e-9 or abs(elapsed - round(elapsed)) > 1.0e-6:
-            raise ValueError("Shard start must be an integer second at/after the basis anchor.")
-        anchor_steps = int(round(elapsed))
-        if anchor_steps:
+        anchor_intervals = round(elapsed / STEP_SECONDS)
+        if (elapsed < -1.0e-9
+                or abs(anchor_intervals * STEP_SECONDS - elapsed) > 1.0e-6):
+            raise ValueError("Shard start must align to the selected sampling grid at/after the basis anchor.")
+        if anchor_intervals:
             radii_anchor = np.asarray(spice.bodvrd("EARTH", "RADII", 3)[1], dtype=float)
-            for anchor_offset in range(anchor_steps + 1):
-                anchor_sample_et = anchor_et + anchor_offset
+            for anchor_offset in range(anchor_intervals + 1):
+                anchor_sample_et = anchor_et + anchor_offset * STEP_SECONDS
                 anchor_earth_state, _ = spice.spkezr(
                     "EARTH", anchor_sample_et, FRAME, "NONE", "SOLAR SYSTEM BARYCENTER"
                 )
