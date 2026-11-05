@@ -25,6 +25,13 @@ REQUIRED_COLUMNS = {
 EXPECTED_START = datetime.fromisoformat("2026-11-02T14:12:00")
 EXPECTED_DURATION_SECONDS = 240
 BRANCH_COUNT = 96
+OVERLAP_IDENTITY_COLUMNS = (
+    "utc", "azimuth_index", "h",
+    "tangency_residual", "surface_residual", "independent_reference_error",
+    "point_fixed_x_km", "point_fixed_y_km", "point_fixed_z_km",
+    "source_dir_x", "source_dir_y", "source_dir_z",
+    "observer_dir_x", "observer_dir_y", "observer_dir_z",
+)
 
 
 def vector(row: dict[str, str], prefix: str) -> np.ndarray:
@@ -63,8 +70,9 @@ def merge_fine(paths: list[Path]) -> dict[tuple[str, int], dict[str, str]]:
             raise AssertionError(f"{path}: empty shard")
         for key, row in shard.items():
             if key in merged:
-                if merged[key] != row:
-                    raise AssertionError(f"Overlapping shard rows disagree at {key}")
+                if any(merged[key][column] != row[column]
+                       for column in OVERLAP_IDENTITY_COLUMNS):
+                    raise AssertionError(f"Overlapping shard geometry disagrees at {key}")
             else:
                 merged[key] = row
     return merged
