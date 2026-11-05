@@ -105,7 +105,7 @@ jobs:
         working-directory: LunaSight_SPICE_Validation/site_observer_spk
         run: |
           python compare_de441_subsecond_limb_convergence.py \
-            --one-second artifacts/de441_limb_subsecond_1s_shard_*.csv \
+            --one-glob 'artifacts/de441_limb_subsecond_1s_shard_*.csv' \
             --half-glob 'artifacts/de441_limb_subsecond_0.5s_shard_*.csv' \
             --quarter-glob 'artifacts/de441_limb_subsecond_0.25s_shard_*.csv' \
             --output de441_subsecond_convergence_summary.csv
