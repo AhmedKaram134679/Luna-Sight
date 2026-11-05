@@ -6,6 +6,7 @@ on:
     branches:
       - science/de441-continuous-limb-tracking
       - science/de441-limb-temporal-convergence
+      - science/de441-limb-convergence-sharded
     paths:
       - .github/workflows/lunasight-de441-continuous-limb.yml
       - LunaSight_SPICE_Validation/site_observer_spk/verify_de441_solar_bent_limb_continuity.py
@@ -90,7 +91,7 @@ jobs:
       - name: Checkout isolated science branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.sha }}
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -141,7 +142,7 @@ jobs:
       - name: Checkout isolated science branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.sha }}
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
