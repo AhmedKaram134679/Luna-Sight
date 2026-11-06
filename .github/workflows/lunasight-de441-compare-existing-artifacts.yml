@@ -1,0 +1,89 @@
+name: LunaSight DE441 Compare Existing Subsecond Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Successful sweep artifacts run ID (no SPICE sweeps will be repeated)"
+        required: true
+        type: string
+        default: "42117830139"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  compare-existing-artifacts:
+    name: Compare previously generated 1s, 0.5s, and 0.25s artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Validate source run ID
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
+
+      - name: Checkout corrected comparator from selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned comparison dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy==2.1.3 scipy==1.14.1
+
+      - name: Download existing artifacts from source run (no recalculation)
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+          pattern: lunasight-de441-subsecond-*
+          path: LunaSight_SPICE_Validation/site_observer_spk/artifacts
+          merge-multiple: true
+
+      - name: Verify all twenty CSV shard files are present
+        working-directory: LunaSight_SPICE_Validation/site_observer_spk
+        shell: bash
+        run: |
+          set -euo pipefail
+          one=$(find artifacts -maxdepth 1 -type f -name 'de441_limb_subsecond_1s_shard_*.csv' | wc -l)
+          half=$(find artifacts -maxdepth 1 -type f -name 'de441_limb_subsecond_0.5s_shard_*.csv' | wc -l)
+          quarter=$(find artifacts -maxdepth 1 -type f -name 'de441_limb_subsecond_0.25s_shard_*.csv' | wc -l)
+          echo "one_second_shards=$one"
+          echo "half_second_shards=$half"
+          echo "quarter_second_shards=$quarter"
+          test "$one" -eq 4
+          test "$half" -eq 4
+          test "$quarter" -eq 12
+          test "$((one + half + quarter))" -eq 20
+
+      - name: Compare the three existing temporal grids
+        working-directory: LunaSight_SPICE_Validation/site_observer_spk
+        run: |
+          set -euo pipefail
+          python compare_de441_subsecond_limb_convergence.py \
+            --one-glob 'artifacts/de441_limb_subsecond_1s_shard_*.csv' \
+            --half-glob 'artifacts/de441_limb_subsecond_0.5s_shard_*.csv' \
+            --quarter-glob 'artifacts/de441_limb_subsecond_0.25s_shard_*.csv' \
+            --output de441_subsecond_convergence_summary.csv
+
+      - name: Upload comparison evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunasight-de441-subsecond-reused-artifacts-report
+          path: |
+            LunaSight_SPICE_Validation/site_observer_spk/de441_subsecond_convergence_summary.csv
+            LunaSight_SPICE_Validation/site_observer_spk/de441_subsecond_convergence_summary_detail.csv
+          if-no-files-found: error
+          retention-days: 30
