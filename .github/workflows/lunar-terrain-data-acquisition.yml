@@ -150,6 +150,8 @@ jobs:
           HALF_WIDTH: ${{ steps.observer.outputs.half_width_m }}
           ACQUIRE_5M: ${{ inputs.acquire_lola_5m }}
           ACQUIRE_20M: ${{ inputs.acquire_20m_support }}
+          OBS_LON: ${{ steps.observer.outputs.longitude }}
+          OBS_LAT: ${{ steps.observer.outputs.latitude }}
         run: |
           set -euo pipefail
           mkdir -p terrain_data/source_metadata terrain_data/subsets
@@ -208,10 +210,7 @@ jobs:
           }
           (root/"acquisition_manifest.json").write_text(json.dumps(manifest,indent=2)+"\\n")
           PY
-        env:
-          OBS_LON: ${{ steps.observer.outputs.longitude }}
-          OBS_LAT: ${{ steps.observer.outputs.latitude }}
-
+      
       - name: Build checksums and inventory
         run: |
           set -euo pipefail
