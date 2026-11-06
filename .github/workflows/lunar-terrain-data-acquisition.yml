@@ -70,7 +70,7 @@ jobs:
           if not 0.5 <= half <= 25.0:
               raise SystemExit("half_width_km must be between 0.5 and 25 km")
           with open(os.environ["GITHUB_OUTPUT"],"a") as out:
-              out.write(f"longitude={lon}\\nlatitude={lat}\\nhalf_width_m={half*1000.0}\\n")
+              out.write(f"longitude={lon}\nlatitude={lat}\nhalf_width_m={half*1000.0}\n")
           PY
 
       - name: Discover exact official LOLA source links
@@ -134,7 +134,7 @@ jobs:
           d=json.load(open("observer_projection.json"))
           xy=d["native_map_coordinates_m"]
           with open(os.environ["GITHUB_OUTPUT"],"a") as out:
-              out.write(f"x={xy['x']}\\ny={xy['y']}\\n")
+              out.write(f"x={xy['x']}\ny={xy['y']}\n")
           print(json.dumps({
               "native_map_coordinates_m":xy,
               "pixel_coordinates":d["pixel_coordinates"],
@@ -208,14 +208,14 @@ jobs:
               },
               "coverage_warning":"The extraction rectangle is a map-coordinate window. Raster extraction success alone does not prove complete valid-data coverage, azimuthal horizon support, or absence of NoData."
           }
-          (root/"acquisition_manifest.json").write_text(json.dumps(manifest,indent=2)+"\\n")
+          (root/"acquisition_manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
           PY
       
       - name: Build checksums and inventory
         run: |
           set -euo pipefail
           find terrain_data -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > terrain_data/SHA256SUMS.txt
-          find terrain_data -type f -printf '%p %s bytes\\n' | sort
+          find terrain_data -type f -printf '%p %s bytes\n' | sort
           cat terrain_data/acquisition_manifest.json
 
       - uses: actions/upload-artifact@v4
