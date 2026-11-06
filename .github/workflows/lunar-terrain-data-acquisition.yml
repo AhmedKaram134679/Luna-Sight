@@ -3,26 +3,28 @@ name: Lunar Terrain Data Acquisition
 on:
   workflow_dispatch:
     inputs:
-      center_x_m:
-        description: "South-polar stereographic X coordinate (meters); required after observer-frame convention is verified"
+      observer_longitude_east:
+        description: "Horizons observer longitude, east-positive degrees"
         required: true
+        default: "200.0"
         type: string
-      center_y_m:
-        description: "South-polar stereographic Y coordinate (meters); required after observer-frame convention is verified"
+      observer_latitude_deg:
+        description: "Horizons observer geodetic latitude, degrees"
         required: true
+        default: "-88.45"
         type: string
       half_width_km:
-        description: "Half-width of square extraction around observer (km)"
+        description: "Half-width of local square extraction around observer"
         required: true
         default: "10"
         type: string
-      include_20m_support:
-        description: "Acquire 20m effective-resolution, elevation-error and count layers"
+      acquire_lola_5m:
+        description: "Acquire 5 m/pixel LOLA mosaic and count layer"
         required: true
         default: true
         type: boolean
-      include_5m_count:
-        description: "Acquire 5m LOLA count layer"
+      acquire_20m_support:
+        description: "Acquire 20 m/pixel regional DEM and support layers"
         required: true
         default: true
         type: boolean
@@ -36,135 +38,190 @@ concurrency:
 
 jobs:
   acquire-and-inspect:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: science/lunar-terrain-coordinate-acquisition
 
-      - name: Validate requested extraction window
-        shell: bash
-        run: |
-          python - <<'PY'
-          import math, os
-          x=float("${{ inputs.center_x_m }}")
-          y=float("${{ inputs.center_y_m }}")
-          w=float("${{ inputs.half_width_km }}")
-          if not all(map(math.isfinite,(x,y,w))) or w <= 0 or w > 100:
-              raise SystemExit("Invalid center coordinates or half_width_km (must be >0 and <=100)")
-          with open(os.environ["GITHUB_OUTPUT"],"a") as f:
-              f.write(f"x={x}\ny={y}\nhalf={w*1000}\n")
-          PY
-        id: window
-
-      - name: Install GDAL and Python dependencies
+      - name: Install matching system GDAL Python bindings
         run: |
           sudo apt-get update
-          sudo apt-get install -y gdal-bin python3-gdal python3-numpy
-          python -m pip install --upgrade pip
-          python -m pip install requests beautifulsoup4
+          sudo apt-get install -y gdal-bin python3-gdal python3-numpy python3-requests python3-bs4
+          /usr/bin/python3 -c "from osgeo import gdal, osr; print('GDAL', gdal.VersionInfo())"
 
-      - name: Discover official COG download links
-        id: sources
+      - name: Validate observer inputs
+        id: observer
+        env:
+          OBS_LON: ${{ inputs.observer_longitude_east }}
+          OBS_LAT: ${{ inputs.observer_latitude_deg }}
+          HALF_WIDTH_KM: ${{ inputs.half_width_km }}
         run: |
-          python - <<'PY'
+          /usr/bin/python3 - <<'PY'
+          import math, os
+          lon=float(os.environ["OBS_LON"])
+          lat=float(os.environ["OBS_LAT"])
+          half=float(os.environ["HALF_WIDTH_KM"])
+          if not all(map(math.isfinite,(lon,lat,half))):
+              raise SystemExit("Observer inputs must be finite")
+          if not -360.0 <= lon <= 360.0 or not -90.0 <= lat <= 90.0:
+              raise SystemExit("Longitude/latitude outside accepted ranges")
+          if not 0.5 <= half <= 25.0:
+              raise SystemExit("half_width_km must be between 0.5 and 25 km")
+          with open(os.environ["GITHUB_OUTPUT"],"a") as out:
+              out.write(f"longitude={lon}\\nlatitude={lat}\\nhalf_width_m={half*1000.0}\\n")
+          PY
+
+      - name: Discover exact official LOLA source links
+        run: |
+          /usr/bin/python3 - <<'PY'
           import requests
           from bs4 import BeautifulSoup
-          pages = {
-            "regional": ("https://pgda.gsfc.nasa.gov/products/90", [
+          from urllib.parse import urljoin
+          import re, json
+          pages = [
+            ("https://pgda.gsfc.nasa.gov/products/90", [
               "LDEM_80S_20MPP_ADJ.TIF",
               "LDEM_80S_20MPP_ADJ_EFFRES.TIF",
               "LDEM_80S_20MPP_ADJ_ERR.TIF",
               "LDEC_80S_20MPP_ADJ.TIF",
             ]),
-            "polar5": ("https://pgda.gsfc.nasa.gov/products/81", [
+            ("https://pgda.gsfc.nasa.gov/products/81", [
               "ldem_87s_5mpp",
               "ldec_87s_5mpp",
             ]),
-          }
+          ]
           session=requests.Session()
-          session.headers["User-Agent"]="LunaSight-Research/1.0 (NASA public data acquisition)"
+          session.headers["User-Agent"]="LunaSight scientific data acquisition; contact via repository"
           found={}
-          for group,(url,names) in pages.items():
-              response=session.get(url,timeout=90)
+          for page,names in pages:
+              response=session.get(page,timeout=120)
               response.raise_for_status()
               soup=BeautifulSoup(response.text,"html.parser")
-              anchors=[(a.get_text(" ",strip=True),a.get("href","")) for a in soup.find_all("a")]
+              candidates=[]
+              for a in soup.find_all("a",href=True):
+                  candidates.append((a.get_text(" ",strip=True),urljoin(page,a["href"])))
               for name in names:
-                  candidates=[]
-                  for text,href in anchors:
-                      if name.lower() in (text+" "+href).lower():
-                          from urllib.parse import urljoin
-                          candidates.append(urljoin(url,href))
-                  if not candidates:
-                      # Some PGDA pages expose filenames as linked text without an exact anchor label.
-                      import re
-                      for href in re.findall(r'''(?:href=["'])([^"']+)''',response.text,re.I):
-                          from urllib.parse import urljoin
-                          absolute=urljoin(url,href)
-                          if name.lower() in absolute.lower():
-                              candidates.append(absolute)
-                  if not candidates:
-                      raise SystemExit(f"Official product page did not expose a direct link for {name}; stop rather than guess a URL.")
-                  found[name]=candidates[0]
-          with open("official_sources.txt","w") as f:
-              for name,url in found.items():
-                  f.write(f"{name}\t{url}\n")
-          print(open("official_sources.txt").read())
+                  matches=[u for text,u in candidates if name.lower() in (text+" "+u).lower()]
+                  if not matches:
+                      # Search raw HTML for an exact filename/path reference, then resolve relative URL.
+                      matches=[urljoin(page,m.group(1)) for m in re.finditer(
+                          r'''(?:href|src)=["']([^"']*''+re.escape(name)+r'''[^"']*)["']''',
+                          response.text,re.I)]
+                  if not matches:
+                      raise SystemExit(f"Official product page {page} did not expose a link matching {name}; refusing to guess.")
+                  found[name]={"product_page":page,"download_url":matches[0]}
+          with open("official_sources.json","w") as out:
+              json.dump(found,out,indent=2)
+          print(json.dumps(found,indent=2))
           PY
-          cat official_sources.txt
 
-      - name: Inspect remote COG metadata and extract requested windows
+      - name: Resolve observer in the actual 20 m LOLA raster CRS
+        id: projection
         env:
-          CENTER_X: ${{ steps.window.outputs.x }}
-          CENTER_Y: ${{ steps.window.outputs.y }}
-          HALF_WIDTH: ${{ steps.window.outputs.half }}
-          INCLUDE_20M_SUPPORT: ${{ inputs.include_20m_support }}
-          INCLUDE_5M_COUNT: ${{ inputs.include_5m_count }}
+          OBS_LON: ${{ steps.observer.outputs.longitude }}
+          OBS_LAT: ${{ steps.observer.outputs.latitude }}
+        run: |
+          set -euo pipefail
+          URL=$(/usr/bin/python3 -c "import json; print(json.load(open('official_sources.json'))['LDEM_80S_20MPP_ADJ.TIF']['download_url'])")
+          /usr/bin/python3 LunaSight_Terrain_Validation/resolve_observer_projection.py \
+            --raster "/vsicurl/$URL" \
+            --longitude-east "$OBS_LON" --latitude "$OBS_LAT" \
+            --output observer_projection.json
+          /usr/bin/python3 - <<'PY'
+          import json, os
+          d=json.load(open("observer_projection.json"))
+          xy=d["native_map_coordinates_m"]
+          with open(os.environ["GITHUB_OUTPUT"],"a") as out:
+              out.write(f"x={xy['x']}\\ny={xy['y']}\\n")
+          print(json.dumps({
+              "native_map_coordinates_m":xy,
+              "pixel_coordinates":d["pixel_coordinates"],
+              "observer_inside_raster_rectangle":d["observer_inside_raster_rectangle"],
+              "frame_compatibility":d["frame_compatibility"]
+          },indent=2))
+          PY
+
+      - name: Extract local LOLA rasters and preserve original metadata
+        env:
+          CENTER_X: ${{ steps.projection.outputs.x }}
+          CENTER_Y: ${{ steps.projection.outputs.y }}
+          HALF_WIDTH: ${{ steps.observer.outputs.half_width_m }}
+          ACQUIRE_5M: ${{ inputs.acquire_lola_5m }}
+          ACQUIRE_20M: ${{ inputs.acquire_20m_support }}
         run: |
           set -euo pipefail
           mkdir -p terrain_data/source_metadata terrain_data/subsets
-          python - <<'PY'
-          import os, subprocess, json, pathlib
+          cp observer_projection.json terrain_data/observer_projection.json
+          /usr/bin/python3 - <<'PY'
+          import os, json, pathlib, subprocess, hashlib
           root=pathlib.Path("terrain_data")
+          sources=json.load(open("official_sources.json"))
+          x=float(os.environ["CENTER_X"]); y=float(os.environ["CENTER_Y"])
+          half=float(os.environ["HALF_WIDTH"])
+          bounds=[x-half,y+half,x+half,y-half]
           selected=[]
-          for line in pathlib.Path("official_sources.txt").read_text().splitlines():
-              name,url=line.split("\t",1)
-              if name in ("LDEM_80S_20MPP_ADJ.TIF","ldem_87s_5mpp"):
-                  selected.append((name,url))
-              elif name=="LDEM_80S_20MPP_ADJ_EFFRES.TIF" and os.environ["INCLUDE_20M_SUPPORT"]=="true":
-                  selected.append((name,url))
-              elif name=="LDEM_80S_20MPP_ADJ_ERR.TIF" and os.environ["INCLUDE_20M_SUPPORT"]=="true":
-                  selected.append((name,url))
-              elif name=="LDEC_80S_20MPP_ADJ.TIF" and os.environ["INCLUDE_20M_SUPPORT"]=="true":
-                  selected.append((name,url))
-              elif name=="ldec_87s_5mpp" and os.environ["INCLUDE_5M_COUNT"]=="true":
-                  selected.append((name,url))
-          x=float(os.environ["CENTER_X"]); y=float(os.environ["CENTER_Y"]); h=float(os.environ["HALF_WIDTH"])
-          bounds=[x-h,y+h,x+h,y-h]
-          for name,url in selected:
+          for name,entry in sources.items():
+              if name.startswith("LDEM_80S") or name=="LDEC_80S_20MPP_ADJ.TIF":
+                  if os.environ["ACQUIRE_20M"]=="true": selected.append((name,entry))
+              elif name.startswith("ldem_87s") or name.startswith("ldec_87s"):
+                  if os.environ["ACQUIRE_5M"]=="true": selected.append((name,entry))
+          records=[]
+          for name,entry in selected:
+              url=entry["download_url"]
               remote="/vsicurl/"+url
-              meta=subprocess.run(["gdalinfo","-json","-mdd","all",remote],check=True,capture_output=True,text=True)
-              (root/"source_metadata"/(name+".gdalinfo.json")).write_text(meta.stdout)
-              output=root/"subsets"/(name.rsplit(".",1)[0]+".tif")
-              cmd=["gdal_translate","-of","GTiff","-projwin",str(bounds[0]),str(bounds[1]),str(bounds[2]),str(bounds[3]),
-                   "-co","TILED=YES","-co","COMPRESS=DEFLATE",remote,str(output)]
-              subprocess.run(cmd,check=True)
-              subprocess.run(["gdalinfo","-json","-mdd","all",str(output)],check=True,
-                             stdout=(root/"source_metadata"/(name+".subset.gdalinfo.json")).open("w"))
-          manifest={"center_xy_m":[x,y],"half_width_m":h,"requested_bounds_xy":[bounds[0],bounds[3],bounds[2],bounds[1]],
-                    "sources":[{"product":n,"url":u} for n,u in selected],
-                    "warning":"Input X/Y must be verified in the product's south-polar stereographic MOON_ME / DE421 coordinates. This workflow does not transform Horizons/DE441 observer coordinates."}
-          (root/"acquisition_manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
+              original=subprocess.run(["gdalinfo","-json","-mdd","all",remote],
+                                      check=True,capture_output=True,text=True).stdout
+              (root/"source_metadata"/(name+".gdalinfo.json")).write_text(original)
+              output=root/"subsets"/(name+".tif")
+              subprocess.run([
+                  "gdal_translate","-of","GTiff","-projwin",
+                  str(bounds[0]),str(bounds[1]),str(bounds[2]),str(bounds[3]),
+                  "-co","TILED=YES","-co","COMPRESS=DEFLATE",
+                  remote,str(output)
+              ],check=True)
+              subset_info=subprocess.run(["gdalinfo","-json","-mdd","all",str(output)],
+                                         check=True,capture_output=True,text=True).stdout
+              (root/"source_metadata"/(name+".subset.gdalinfo.json")).write_text(subset_info)
+              digest=hashlib.sha256(output.read_bytes()).hexdigest()
+              records.append({
+                  "product_filename":name,"product_page":entry["product_page"],
+                  "download_url":url,"subset_file":str(output),
+                  "subset_bytes":output.stat().st_size,"subset_sha256":digest
+              })
+          projection=json.load(open("observer_projection.json"))
+          manifest={
+              "observer_input":{"longitude_east_deg":float(os.environ.get("OBS_LON","200")),
+                                "latitude_geodetic_deg":float(os.environ.get("OBS_LAT","-88.45")),
+                                "altitude_km":0.0},
+              "observer_native_map_xy_m":[x,y],
+              "requested_square_bounds_native_crs_m":[bounds[0],bounds[3],bounds[2],bounds[1]],
+              "half_width_m":half,
+              "observer_projection":projection,
+              "sources":records,
+              "frame_warning":{
+                  "status":"NOT_VALIDATED",
+                  "text":"Raster-native CRS projection was computed from the raster's embedded geographic CRS. This does not establish the body-fixed orientation/realization transform between Horizons DE441 MEAN_ME and LOLA MOON_ME / DE421. The repository's moon_de440_220930.tf describes a DE440/DE421 relationship, not a demonstrated exact DE441-to-DE421 transformation. Do not interpret this subset as final site registration until that transform and vertical datum are independently validated."
+              },
+              "coverage_warning":"The extraction rectangle is a map-coordinate window. Raster extraction success alone does not prove complete valid-data coverage, azimuthal horizon support, or absence of NoData."
+          }
+          (root/"acquisition_manifest.json").write_text(json.dumps(manifest,indent=2)+"\\n")
           PY
+        env:
+          OBS_LON: ${{ steps.observer.outputs.longitude }}
+          OBS_LAT: ${{ steps.observer.outputs.latitude }}
 
-      - name: Generate checksums and archive reports
+      - name: Build checksums and inventory
         run: |
-          find terrain_data -type f -print0 | sort -z | xargs -0 sha256sum > terrain_data/SHA256SUMS.txt
-          du -ah terrain_data | sort -h
+          set -euo pipefail
+          find terrain_data -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > terrain_data/SHA256SUMS.txt
+          find terrain_data -type f -printf '%p %s bytes\\n' | sort
+          cat terrain_data/acquisition_manifest.json
 
       - uses: actions/upload-artifact@v4
         with:
-          name: lunasight-lola-terrain-subsets
+          name: lunasight-lola-local-subsets
           path: terrain_data/
           if-no-files-found: error
           retention-days: 30
