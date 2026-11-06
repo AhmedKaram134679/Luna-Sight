@@ -1,0 +1,43 @@
+name: Run Lunar Terrain Data Acquisition
+
+on:
+  workflow_dispatch:
+    inputs:
+      observer_longitude_east:
+        description: "Horizons observer longitude, east-positive degrees"
+        required: true
+        default: "200.0"
+        type: string
+      observer_latitude_deg:
+        description: "Horizons observer geodetic latitude, degrees"
+        required: true
+        default: "-88.45"
+        type: string
+      half_width_km:
+        description: "Half-width of local square extraction around observer"
+        required: true
+        default: "10"
+        type: string
+      acquire_lola_5m:
+        description: "Acquire 5 m/pixel LOLA mosaic and count layer"
+        required: true
+        default: true
+        type: boolean
+      acquire_20m_support:
+        description: "Acquire 20 m/pixel regional DEM and support layers"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch-acquisition:
+    uses: AhmedKaram134679/Luna-Sight/.github/workflows/lunar-terrain-data-acquisition.yml@science/lunar-terrain-coordinate-acquisition
+    with:
+      observer_longitude_east: ${{ inputs.observer_longitude_east }}
+      observer_latitude_deg: ${{ inputs.observer_latitude_deg }}
+      half_width_km: ${{ inputs.half_width_km }}
+      acquire_lola_5m: ${{ inputs.acquire_lola_5m }}
+      acquire_20m_support: ${{ inputs.acquire_20m_support }}
