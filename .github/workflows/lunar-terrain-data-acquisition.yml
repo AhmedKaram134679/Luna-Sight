@@ -1,0 +1,170 @@
+name: Lunar Terrain Data Acquisition
+
+on:
+  workflow_dispatch:
+    inputs:
+      center_x_m:
+        description: "South-polar stereographic X coordinate (meters); required after observer-frame convention is verified"
+        required: true
+        type: string
+      center_y_m:
+        description: "South-polar stereographic Y coordinate (meters); required after observer-frame convention is verified"
+        required: true
+        type: string
+      half_width_km:
+        description: "Half-width of square extraction around observer (km)"
+        required: true
+        default: "10"
+        type: string
+      include_20m_support:
+        description: "Acquire 20m effective-resolution, elevation-error and count layers"
+        required: true
+        default: true
+        type: boolean
+      include_5m_count:
+        description: "Acquire 5m LOLA count layer"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lunar-terrain-data-acquisition
+  cancel-in-progress: false
+
+jobs:
+  acquire-and-inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate requested extraction window
+        shell: bash
+        run: |
+          python - <<'PY'
+          import math, os
+          x=float("${{ inputs.center_x_m }}")
+          y=float("${{ inputs.center_y_m }}")
+          w=float("${{ inputs.half_width_km }}")
+          if not all(map(math.isfinite,(x,y,w))) or w <= 0 or w > 100:
+              raise SystemExit("Invalid center coordinates or half_width_km (must be >0 and <=100)")
+          with open(os.environ["GITHUB_OUTPUT"],"a") as f:
+              f.write(f"x={x}\ny={y}\nhalf={w*1000}\n")
+          PY
+        id: window
+
+      - name: Install GDAL and Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin python3-gdal python3-numpy
+          python -m pip install --upgrade pip
+          python -m pip install requests beautifulsoup4
+
+      - name: Discover official COG download links
+        id: sources
+        run: |
+          python - <<'PY'
+          import requests
+          from bs4 import BeautifulSoup
+          pages = {
+            "regional": ("https://pgda.gsfc.nasa.gov/products/90", [
+              "LDEM_80S_20MPP_ADJ.TIF",
+              "LDEM_80S_20MPP_ADJ_EFFRES.TIF",
+              "LDEM_80S_20MPP_ADJ_ERR.TIF",
+              "LDEC_80S_20MPP_ADJ.TIF",
+            ]),
+            "polar5": ("https://pgda.gsfc.nasa.gov/products/81", [
+              "ldem_87s_5mpp",
+              "ldec_87s_5mpp",
+            ]),
+          }
+          session=requests.Session()
+          session.headers["User-Agent"]="LunaSight-Research/1.0 (NASA public data acquisition)"
+          found={}
+          for group,(url,names) in pages.items():
+              response=session.get(url,timeout=90)
+              response.raise_for_status()
+              soup=BeautifulSoup(response.text,"html.parser")
+              anchors=[(a.get_text(" ",strip=True),a.get("href","")) for a in soup.find_all("a")]
+              for name in names:
+                  candidates=[]
+                  for text,href in anchors:
+                      if name.lower() in (text+" "+href).lower():
+                          from urllib.parse import urljoin
+                          candidates.append(urljoin(url,href))
+                  if not candidates:
+                      # Some PGDA pages expose filenames as linked text without an exact anchor label.
+                      import re
+                      for href in re.findall(r'''(?:href=["'])([^"']+)''',response.text,re.I):
+                          from urllib.parse import urljoin
+                          absolute=urljoin(url,href)
+                          if name.lower() in absolute.lower():
+                              candidates.append(absolute)
+                  if not candidates:
+                      raise SystemExit(f"Official product page did not expose a direct link for {name}; stop rather than guess a URL.")
+                  found[name]=candidates[0]
+          with open("official_sources.txt","w") as f:
+              for name,url in found.items():
+                  f.write(f"{name}\t{url}\n")
+          print(open("official_sources.txt").read())
+          PY
+          cat official_sources.txt
+
+      - name: Inspect remote COG metadata and extract requested windows
+        env:
+          CENTER_X: ${{ steps.window.outputs.x }}
+          CENTER_Y: ${{ steps.window.outputs.y }}
+          HALF_WIDTH: ${{ steps.window.outputs.half }}
+          INCLUDE_20M_SUPPORT: ${{ inputs.include_20m_support }}
+          INCLUDE_5M_COUNT: ${{ inputs.include_5m_count }}
+        run: |
+          set -euo pipefail
+          mkdir -p terrain_data/source_metadata terrain_data/subsets
+          python - <<'PY'
+          import os, subprocess, json, pathlib
+          root=pathlib.Path("terrain_data")
+          selected=[]
+          for line in pathlib.Path("official_sources.txt").read_text().splitlines():
+              name,url=line.split("\t",1)
+              if name in ("LDEM_80S_20MPP_ADJ.TIF","ldem_87s_5mpp"):
+                  selected.append((name,url))
+              elif name=="LDEM_80S_20MPP_ADJ_EFFRES.TIF" and os.environ["INCLUDE_20M_SUPPORT"]=="true":
+                  selected.append((name,url))
+              elif name=="LDEM_80S_20MPP_ADJ_ERR.TIF" and os.environ["INCLUDE_20M_SUPPORT"]=="true":
+                  selected.append((name,url))
+              elif name=="LDEC_80S_20MPP_ADJ.TIF" and os.environ["INCLUDE_20M_SUPPORT"]=="true":
+                  selected.append((name,url))
+              elif name=="ldec_87s_5mpp" and os.environ["INCLUDE_5M_COUNT"]=="true":
+                  selected.append((name,url))
+          x=float(os.environ["CENTER_X"]); y=float(os.environ["CENTER_Y"]); h=float(os.environ["HALF_WIDTH"])
+          bounds=[x-h,y+h,x+h,y-h]
+          for name,url in selected:
+              remote="/vsicurl/"+url
+              meta=subprocess.run(["gdalinfo","-json","-mdd","all",remote],check=True,capture_output=True,text=True)
+              (root/"source_metadata"/(name+".gdalinfo.json")).write_text(meta.stdout)
+              output=root/"subsets"/(name.rsplit(".",1)[0]+".tif")
+              cmd=["gdal_translate","-of","GTiff","-projwin",str(bounds[0]),str(bounds[1]),str(bounds[2]),str(bounds[3]),
+                   "-co","TILED=YES","-co","COMPRESS=DEFLATE",remote,str(output)]
+              subprocess.run(cmd,check=True)
+              subprocess.run(["gdalinfo","-json","-mdd","all",str(output)],check=True,
+                             stdout=(root/"source_metadata"/(name+".subset.gdalinfo.json")).open("w"))
+          manifest={"center_xy_m":[x,y],"half_width_m":h,"requested_bounds_xy":[bounds[0],bounds[3],bounds[2],bounds[1]],
+                    "sources":[{"product":n,"url":u} for n,u in selected],
+                    "warning":"Input X/Y must be verified in the product's south-polar stereographic MOON_ME / DE421 coordinates. This workflow does not transform Horizons/DE441 observer coordinates."}
+          (root/"acquisition_manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
+          PY
+
+      - name: Generate checksums and archive reports
+        run: |
+          find terrain_data -type f -print0 | sort -z | xargs -0 sha256sum > terrain_data/SHA256SUMS.txt
+          du -ah terrain_data | sort -h
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lunasight-lola-terrain-subsets
+          path: terrain_data/
+          if-no-files-found: error
+          retention-days: 30
