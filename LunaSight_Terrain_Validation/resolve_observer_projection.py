@@ -77,7 +77,7 @@ def main():
     result=resolve(a.raster,a.longitude_east,a.latitude,a.altitude_km)
     with open(a.output,"w",encoding="utf-8") as f:
         json.dump(result,f,indent=2)
-        f.write("\\n")
+        f.write("\n")
     print(json.dumps({"map_coordinates_m":result["native_map_coordinates_m"],
                       "pixel_coordinates":result["pixel_coordinates"],
                       "inside":result["observer_inside_raster_rectangle"],
