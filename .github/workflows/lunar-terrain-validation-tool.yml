@@ -1,0 +1,26 @@
+name: Lunar Terrain Validation Toolkit
+
+on:
+  push:
+    branches:
+      - science/lunar-terrain-validation-tool
+  pull_request:
+    branches:
+      - science/lunar-terrain-validation-tool
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile toolkit
+        run: python -m py_compile LunaSight_Terrain_Validation/terrain_validate.py
+      - name: Run geometry helper tests
+        run: python -m unittest discover -s LunaSight_Terrain_Validation/tests -v
