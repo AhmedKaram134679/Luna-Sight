@@ -1,6 +1,6 @@
 import unittest
 
-from terrain_validate import _pixel_from_map, _point_in_polygon
+from LunaSight_Terrain_Validation.terrain_validate import _pixel_from_map, _point_in_polygon
 
 
 class GeometryHelperTests(unittest.TestCase):
