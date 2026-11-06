@@ -1,6 +1,23 @@
 name: Lunar Terrain Data Acquisition
 
 on:
+  workflow_call:
+    inputs:
+      observer_longitude_east:
+        required: true
+        type: string
+      observer_latitude_deg:
+        required: true
+        type: string
+      half_width_km:
+        required: true
+        type: string
+      acquire_lola_5m:
+        required: true
+        type: boolean
+      acquire_20m_support:
+        required: true
+        type: boolean
   workflow_dispatch:
     inputs:
       observer_longitude_east:
