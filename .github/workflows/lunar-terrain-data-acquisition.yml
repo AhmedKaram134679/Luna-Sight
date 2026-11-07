@@ -170,10 +170,13 @@ jobs:
           },indent=2))
           PY
 
-      - name: Extract local LOLA rasters and preserve original metadata
+      - name: Validate affine pixel-window math
+        run: |
+          set -euo pipefail
+          /usr/bin/python3 -m unittest LunaSight_Terrain_Validation.tests.test_extract_lola_pixel_windows -v
+
+      - name: Extract independent 5m and 20m LOLA elevation windows
         env:
-          CENTER_X: ${{ steps.projection.outputs.x }}
-          CENTER_Y: ${{ steps.projection.outputs.y }}
           HALF_WIDTH: ${{ steps.observer.outputs.half_width_m }}
           ACQUIRE_5M: ${{ inputs.acquire_lola_5m }}
           ACQUIRE_20M: ${{ inputs.acquire_20m_support }}
@@ -183,62 +186,30 @@ jobs:
           set -euo pipefail
           mkdir -p terrain_data/source_metadata terrain_data/subsets
           cp remote_access_diagnostics.json terrain_data/remote_access_diagnostics.json
-          cp observer_projection.json terrain_data/observer_projection.json
+          cp observer_projection.json terrain_data/observer_projection_20m_diagnostic.json
+          ARGS=()
+          if [ "$ACQUIRE_5M" = "true" ]; then ARGS+=(--include-5m); fi
+          if [ "$ACQUIRE_20M" = "true" ]; then ARGS+=(--include-20m); fi
+          /usr/bin/python3 LunaSight_Terrain_Validation/extract_lola_pixel_windows.py \
+            --sources official_sources.json \
+            --output-dir terrain_data/subsets \
+            --report terrain_data/pixel_window_extraction_report.json \
+            --longitude-east "$OBS_LON" --latitude "$OBS_LAT" \
+            --half-width-m "$HALF_WIDTH" "${ARGS[@]}"
           /usr/bin/python3 - <<'PY'
-          import os, json, pathlib, subprocess, hashlib
-          root=pathlib.Path("terrain_data")
-          sources=json.load(open("official_sources.json"))
-          x=float(os.environ["CENTER_X"]); y=float(os.environ["CENTER_Y"])
-          half=float(os.environ["HALF_WIDTH"])
-          bounds=[x-half,y+half,x+half,y-half]
-          selected=[]
-          for name,entry in sources.items():
-              if name.startswith("LDEM_80S") or name=="LDEC_80S_20MPP_ADJ.TIF":
-                  if os.environ["ACQUIRE_20M"]=="true": selected.append((name,entry))
-              elif name.startswith("ldem_87s") or name.startswith("ldec_87s"):
-                  if os.environ["ACQUIRE_5M"]=="true": selected.append((name,entry))
-          records=[]
-          for name,entry in selected:
-              url=entry["download_url"]
-              remote="/vsicurl/"+url
-              original=subprocess.run(["gdalinfo","-json","-mdd","all",remote],
-                                      check=True,capture_output=True,text=True).stdout
-              (root/"source_metadata"/(name+".gdalinfo.json")).write_text(original)
-              output=root/"subsets"/(name+".tif")
-              subprocess.run([
-                  "gdal_translate","-of","GTiff","-projwin",
-                  str(bounds[0]),str(bounds[1]),str(bounds[2]),str(bounds[3]),
-                  "-co","TILED=YES","-co","COMPRESS=DEFLATE",
-                  remote,str(output)
-              ],check=True)
-              subset_info=subprocess.run(["gdalinfo","-json","-mdd","all",str(output)],
-                                         check=True,capture_output=True,text=True).stdout
-              (root/"source_metadata"/(name+".subset.gdalinfo.json")).write_text(subset_info)
-              digest=hashlib.sha256(output.read_bytes()).hexdigest()
-              records.append({
-                  "product_filename":name,"product_page":entry["product_page"],
-                  "download_url":url,"subset_file":str(output),
-                  "subset_bytes":output.stat().st_size,"subset_sha256":digest
-              })
-          projection=json.load(open("observer_projection.json"))
-          manifest={
-              "observer_input":{"longitude_east_deg":float(os.environ.get("OBS_LON","200")),
-                                "latitude_geodetic_deg":float(os.environ.get("OBS_LAT","-88.45")),
-                                "altitude_km":0.0},
-              "observer_native_map_xy_m":[x,y],
-              "requested_square_bounds_native_crs_m":[bounds[0],bounds[3],bounds[2],bounds[1]],
-              "half_width_m":half,
-              "observer_projection":projection,
-              "sources":records,
-              "frame_warning":{
-                  "status":"NOT_VALIDATED",
-                  "text":"Raster-native CRS projection was computed from the raster's embedded geographic CRS. This does not establish the body-fixed orientation/realization transform between Horizons DE441 MEAN_ME and LOLA MOON_ME / DE421. The repository's moon_de440_220930.tf describes a DE440/DE421 relationship, not a demonstrated exact DE441-to-DE421 transformation. Do not interpret this subset as final site registration until that transform and vertical datum are independently validated."
-              },
-              "coverage_warning":"The extraction rectangle is a map-coordinate window. Raster extraction success alone does not prove complete valid-data coverage, azimuthal horizon support, or absence of NoData."
-          }
-          (root/"acquisition_manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
+          import json, pathlib
+          report=json.load(open("terrain_data/pixel_window_extraction_report.json"))
+          if report.get("status") != "PASS":
+              raise SystemExit("Pixel-window extraction report did not pass")
+          for product in report["products"]:
+              if product["pixel_window_validation"] != "PASS_POSITIVE_AND_IN_BOUNDS":
+                  raise SystemExit("A product has an invalid pixel window")
+              if product["subset_dimensions"] != product["pixel_window_xoff_yoff_xsize_ysize"][2:]:
+                  raise SystemExit("Subset dimensions do not match the validated pixel window")
+          print(json.dumps({"status":report["status"],"products":len(report["products"]),
+                            "windows":[p["pixel_window_xoff_yoff_xsize_ysize"] for p in report["products"]]},indent=2))
           PY
-      
+
       - name: Build checksums and inventory
         run: |
           set -euo pipefail
