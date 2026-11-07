@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 from pathlib import PurePosixPath
 from urllib.parse import urljoin, urlparse
 
@@ -42,7 +41,8 @@ def discover_links(html: str, page_url: str, requested_names: tuple[str, ...]) -
             parsed = urlparse(absolute)
             if parsed.scheme not in ("http", "https") or not parsed.netloc:
                 continue
-            searchable = (raw + " " + label + " " + PurePosixPath(parsed.path).name).casefold()
+            descriptive = " ".join(str(tag.get(key, "")) for key in ("alt", "title", "aria-label", "download"))
+            searchable = (raw + " " + label + " " + descriptive + " " + PurePosixPath(parsed.path).name).casefold()
             for name in requested_names:
                 needle = name.casefold()
                 if needle in searchable and absolute not in matches[name]:
