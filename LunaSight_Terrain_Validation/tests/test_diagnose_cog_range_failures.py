@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch
-from diagnose_cog_range_failures import parse_range, RangeReader
+from diagnose_cog_range_failures import parse_range, RangeReader, read_exact
 
 class COGRangeTests(unittest.TestCase):
     def test_parse_valid_range(self):
