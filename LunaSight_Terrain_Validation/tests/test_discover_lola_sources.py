@@ -18,6 +18,11 @@ class DiscoverLinksTests(unittest.TestCase):
             "https://pgda.gsfc.nasa.gov/data/LDEM_87S_5MPP.TIF"
         ])
 
+    def test_src_can_match_product_name_in_alt_text(self):
+        html = '<img src="/download?id=123" alt="ldem_87s_5mpp GeoTIFF">'
+        result = discover_links(html, "https://pgda.gsfc.nasa.gov/products/81", ("ldem_87s_5mpp",))
+        self.assertEqual(result["ldem_87s_5mpp"], ["https://pgda.gsfc.nasa.gov/download?id=123"])
+
     def test_duplicate_urls_are_deduplicated(self):
         html = ('<a href="/data/file.tif">LDEM_80S_20MPP_ADJ.TIF</a>'
                 '<img src="/data/file.tif" alt="LDEM_80S_20MPP_ADJ.TIF">')
