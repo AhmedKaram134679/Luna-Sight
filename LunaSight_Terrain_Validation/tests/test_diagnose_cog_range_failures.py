@@ -10,7 +10,7 @@ class COGRangeTests(unittest.TestCase):
     def test_requests_206_exact_range(self):
         reader=RangeReader("https://example.test/a.tif")
         result=reader._validate("requests",100,199,206,"https://cdn.test/a.tif",
-            "Content-Range: bytes 100-199/1000\\nContent-Length: 100\\nContent-Type: image/tiff",b"x"*100)
+            "Content-Range: bytes 100-199/1000\nContent-Length: 100\nContent-Type: image/tiff",b"x"*100)
         self.assertTrue(result["pass"])
         self.assertEqual(result["final_host"],"cdn.test")
     def test_reject_403(self):
@@ -31,3 +31,9 @@ class COGRangeTests(unittest.TestCase):
         self.assertFalse(result["pass"])
 
 if __name__=="__main__": unittest.main()
+
+    def test_reject_html_even_with_206(self):
+        reader=RangeReader("https://example.test/a.tif")
+        result=reader._validate("requests",0,9,206,"https://example.test/a.tif",
+            "Content-Range: bytes 0-9/100\nContent-Type: text/html",b"<html>xx</html>")
+        self.assertFalse(result["pass"])
