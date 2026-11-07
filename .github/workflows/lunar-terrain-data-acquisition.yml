@@ -114,20 +114,26 @@ jobs:
           cd ..
           /usr/bin/python3 LunaSight_Terrain_Validation/validate_remote_access.py --sources official_sources.json --output remote_access_diagnostics.json --range-size 1024
 
-      - name: Diagnose TIFF tile byte ranges with requests, curl and GDAL
+      - name: Diagnose IFD offset with independent requests, curl and GDAL clients
         run: |
           set -euo pipefail
           cd LunaSight_Terrain_Validation
-          /usr/bin/python3 -m unittest discover -s tests -p 'test_diagnose_cog_range_failures.py' -v
+          /usr/bin/python3 -m unittest discover -s tests -p 'test_diagnose_cog_range_client_matrix.py' -v
           cd ..
-          /usr/bin/python3 LunaSight_Terrain_Validation/diagnose_cog_range_failures.py \
+          /usr/bin/python3 LunaSight_Terrain_Validation/diagnose_cog_range_client_matrix.py \
             --sources official_sources.json \
             --product ldem_87s_5mpp \
-            --range 1677083818-1677191372 \
-            --range 1903045609-1903175929 \
-            --max-tiles 4 \
-            --chunk-size 16384 \
-            --output cog_range_failure_diagnostics.json
+            --offset 197624 \
+            --output cog_range_client_matrix.json
+
+      - name: Upload targeted COG range diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunasight-cog-range-diagnostics
+          path: cog_range_client_matrix.json
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload targeted COG range diagnostics
         if: always()
