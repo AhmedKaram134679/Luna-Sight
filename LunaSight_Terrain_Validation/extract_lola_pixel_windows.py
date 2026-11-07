@@ -90,7 +90,14 @@ def extract_one(name: str, url: str, output_dir: Path, longitude: float,
                 latitude: float, half_width_m: float) -> dict[str, Any]:
     source = "/vsicurl/" + url
     gdal.UseExceptions()
-    ds = gdal.Open(source, gdal.GA_ReadOnly)
+    gdal_errors = []
+    def capture_gdal_error(error_class, error_number, message):
+        gdal_errors.append({"class": int(error_class), "number": int(error_number), "message": str(message)})
+    gdal.PushErrorHandler(capture_gdal_error)
+    try:
+        ds = gdal.Open(source, gdal.GA_ReadOnly)
+    finally:
+        gdal.PopErrorHandler()
     if ds is None:
         raise RuntimeError(f"GDAL could not open remote source {url}")
     gt = ds.GetGeoTransform(can_return_null=True)
@@ -99,15 +106,23 @@ def extract_one(name: str, url: str, output_dir: Path, longitude: float,
     (x, y, z), geographic_wkt, native_wkt = observer_map_xy(ds, longitude, latitude)
     bounds = (x - half_width_m, y - half_width_m, x + half_width_m, y + half_width_m)
     window = pixel_window_from_map_bounds(gt, ds.RasterXSize, ds.RasterYSize, bounds)
+    source_width, source_height = ds.RasterXSize, ds.RasterYSize
 
     output_dir.mkdir(parents=True, exist_ok=True)
     safe_name = Path(name).name
     output = output_dir / (safe_name.rsplit(".", 1)[0] + "_subset.tif")
     # Use the explicit validated pixel window, not -projwin. This avoids
     # GDAL's ambiguous corner ordering and guarantees positive integer sizes.
-    result = gdal.Translate(str(output), ds, srcWin=window,
-                            format="GTiff",
-                            creationOptions=["TILED=YES", "COMPRESS=DEFLATE"])
+    translate_errors = []
+    def capture_translate_error(error_class, error_number, message):
+        translate_errors.append({"class": int(error_class), "number": int(error_number), "message": str(message)})
+    gdal.PushErrorHandler(capture_translate_error)
+    try:
+        result = gdal.Translate(str(output), ds, srcWin=window,
+                                format="GTiff",
+                                creationOptions=["TILED=YES", "COMPRESS=DEFLATE"])
+    finally:
+        gdal.PopErrorHandler()
     if result is None:
         raise RuntimeError("gdal.Translate returned no output dataset")
     result.FlushCache()
@@ -122,8 +137,9 @@ def extract_one(name: str, url: str, output_dir: Path, longitude: float,
     out_ds = None
     return {
         "product_filename": name, "source_url": url, "subset_file": str(output),
+        "gdal_open_messages": gdal_errors, "gdal_translate_messages": translate_errors,
         "subset_bytes": output.stat().st_size, "subset_sha256": sha256(output),
-        "source_dimensions": [int(gdal.Open(source).RasterXSize), int(gdal.Open(source).RasterYSize)],
+        "source_dimensions": [int(source_width), int(source_height)],
         "source_geotransform": list(gt), "source_crs_wkt": native_wkt,
         "geographic_crs_wkt": geographic_wkt,
         "observer_map_coordinates": {"x": x, "y": y, "z": z},
@@ -151,8 +167,11 @@ def main() -> int:
     parser.add_argument("--longitude-east", type=float, required=True)
     parser.add_argument("--latitude", type=float, required=True)
     parser.add_argument("--half-width-m", type=float, required=True)
+    parser.add_argument("--include-5m", action="store_true")
+    parser.add_argument("--include-20m", action="store_true")
     args = parser.parse_args()
-    report: dict[str, Any] = {"schema_version": 1, "status": "RUNNING", "products": [], "errors": []}
+    report: dict[str, Any] = {"schema_version": 1, "status": "RUNNING", "products": [], "errors": [],
+                              "http_access_context": "GDAL /vsicurl/ exposes CPL/GDAL errors but not raw HTTP response headers."}
     try:
         if not (-360 <= args.longitude_east <= 360 and -90 <= args.latitude <= 90):
             raise ValueError("Observer coordinates outside accepted range")
@@ -160,7 +179,8 @@ def main() -> int:
             raise ValueError("half-width-m must be finite and positive")
         sources = json.loads(args.sources.read_text(encoding="utf-8"))
         selected = [(name, entry) for name, entry in sources.items()
-                    if name.startswith(("LDEM_80S", "ldem_87s"))]
+                    if ((args.include_20m and name.startswith("LDEM_80S"))
+                        or (args.include_5m and name.startswith("ldem_87s")))]
         for name, entry in selected:
             try:
                 report["products"].append(extract_one(
