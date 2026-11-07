@@ -36,4 +36,35 @@ class COGRangeTests(unittest.TestCase):
             "Content-Range: bytes 0-9/100\nContent-Type: text/html",b"<html>xx</html>")
         self.assertFalse(result["pass"])
 
+
+    def test_read_exact_uses_one_get_and_returns_same_response_body(self):
+        class FakeReader:
+            def __init__(self):
+                self.calls = []
+            def get(self, start, end, client="requests", include_body=False):
+                self.calls.append((start, end, client, include_body))
+                return {"pass": True, "_body": b"TIFFDATA"}
+        reader = FakeReader()
+        self.assertEqual(read_exact(reader, 16, 8), b"TIFFDATA")
+        self.assertEqual(reader.calls, [(16, 23, "requests", True)])
+
+    def test_read_exact_rejects_unvalidated_range_without_second_request(self):
+        class FakeReader:
+            def __init__(self):
+                self.calls = 0
+            def get(self, start, end, client="requests", include_body=False):
+                self.calls += 1
+                return {"pass": False, "http_status": 200, "reason": "expected HTTP 206"}
+        reader = FakeReader()
+        with self.assertRaisesRegex(RuntimeError, "Cannot read TIFF structure"):
+            read_exact(reader, 16, 8)
+        self.assertEqual(reader.calls, 1)
+
+    def test_read_exact_rejects_missing_or_wrong_sized_retained_body(self):
+        class FakeReader:
+            def get(self, start, end, client="requests", include_body=False):
+                return {"pass": True, "_body": b"short"}
+        with self.assertRaisesRegex(RuntimeError, "did not retain"):
+            read_exact(FakeReader(), 16, 8)
+
 if __name__=="__main__": unittest.main()
