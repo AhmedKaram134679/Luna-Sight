@@ -58,7 +58,6 @@ jobs:
     env:
       GDAL_HTTP_MAX_RETRY: '4'
       GDAL_HTTP_RETRY_DELAY: '2'
-      GDAL_HTTP_RETRY_CODES: '429,500,502,503,504'
       GDAL_HTTP_TIMEOUT: '120'
       GDAL_HTTP_CONNECTTIMEOUT: '30'
       CPL_VSIL_CURL_CACHE_SIZE: '16777216'
@@ -153,6 +152,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p terrain_data/source_metadata terrain_data/subsets
+          cp remote_access_diagnostics.json terrain_data/remote_access_diagnostics.json
           cp observer_projection.json terrain_data/observer_projection.json
           /usr/bin/python3 - <<'PY'
           import os, json, pathlib, subprocess, hashlib
