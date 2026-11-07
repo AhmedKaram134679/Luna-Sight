@@ -240,39 +240,77 @@ def main():
     p.add_argument("--output",default="cog_range_failure_diagnostics.json")
     p.add_argument("--max-tiles",type=int,default=8,
                    help="Maximum TIFF tiles sampled per IFD (0 disables tile probes)")
+    p.add_argument("--chunk-size",type=int,default=TIFF_READ_CHUNK_SIZE,
+                   help="Maximum bytes per TIFF metadata Range request")
     a=p.parse_args()
-    sources=json.loads(Path(a.sources).read_text(encoding="utf-8"))
-    entry=next((v for k,v in sources.items() if k.casefold()==a.product.casefold()),None)
-    if not entry: raise SystemExit(f"Product not found in source manifest: {a.product}")
-    url=entry["download_url"]; reader=RangeReader(url)
-    report={"product":a.product,"source_url":url,"scope":"targeted HTTP/TIFF/GDAL diagnostics; no full download"}
-    report["tiff_structure"]=parse_tiff_tile_tables(reader)
-    report["observed_ranges"]=[]
-    for start,end in a.range:
-        report["observed_ranges"].append({"range":[start,end],
-          "clients":[reader.get(start,end,"requests"),reader.get(start,end,"curl")]})
-    report["tile_probes"]=[]
-    if a.max_tiles:
-        for di,d in enumerate(report["tiff_structure"]["directories"]):
-            n=min(a.max_tiles,d["tile_count"])
-            for ti in range(n):
-                start=d["tile_offsets"][ti]; end=start+d["tile_byte_counts"][ti]-1
-                item={"ifd_index":di,"tile_index":ti,"range":[start,end],
+    output=Path(a.output)
+    report={
+        "product":a.product,
+        "scope":"targeted HTTP/TIFF/GDAL diagnostics; no full download",
+        "status":"STARTED",
+        "last_successful_stage":None,
+        "failed_stage":None,
+        "error":None,
+        "request_history":[],
+        "tiff_structure":None,
+        "observed_ranges":[],
+        "tile_probes":[],
+        "summary":None
+    }
+    reader=None
+    exit_code=0
+    try:
+        sources=json.loads(Path(a.sources).read_text(encoding="utf-8"))
+        entry=next((v for k,v in sources.items() if k.casefold()==a.product.casefold()),None)
+        if not entry:
+            raise RuntimeError(f"Product not found in source manifest: {a.product}")
+        url=entry["download_url"]
+        report["source_url"]=url
+        reader=RangeReader(url)
+        report["failed_stage"]="tiff_structure"
+        report["tiff_structure"]=parse_tiff_tile_tables(reader, chunk_size=a.chunk_size)
+        report["last_successful_stage"]="tiff_structure"
+        report["failed_stage"]="observed_ranges"
+        for start,end in a.range:
+            report["observed_ranges"].append({"range":[start,end],
+              "clients":[reader.get(start,end,"requests"),reader.get(start,end,"curl")]})
+        report["last_successful_stage"]="observed_ranges"
+        report["failed_stage"]="tile_probes"
+        if a.max_tiles:
+            for di,d in enumerate(report["tiff_structure"]["directories"]):
+                n=min(a.max_tiles,d["tile_count"])
+                for ti in range(n):
+                    start=d["tile_offsets"][ti]; end=start+d["tile_byte_counts"][ti]-1
+                    report["tile_probes"].append({"ifd_index":di,"tile_index":ti,"range":[start,end],
                       "requests":reader.get(start,end,"requests"),
                       "curl":reader.get(start,end,"curl"),
-                      "gdal":gdal_probe(url,d,ti)}
-                report["tile_probes"].append(item)
-    report["summary"]={
-      "observed_range_count":len(report["observed_ranges"]),
-      "tile_probe_count":len(report["tile_probes"]),
-      "requests_pass":sum(x.get("pass",False) for group in report["observed_ranges"] for x in group["clients"])+sum(x[k].get("pass",False) for x in report["tile_probes"] for k in ("requests","curl")),
-      "gdal_tile_pass":sum(x["gdal"].get("status")=="PASS" for x in report["tile_probes"]),
-      "note":"A passing range test is transport evidence only, not TIFF integrity or scientific acceptance."
-    }
-    Path(a.output).write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
+                      "gdal":gdal_probe(url,d,ti)})
+        report["last_successful_stage"]="tile_probes"
+        report["failed_stage"]=None
+        report["status"]="COMPLETED"
+    except Exception as exc:
+        report["status"]="PARTIAL_FAILURE"
+        report["error"]={"type":type(exc).__name__,"message":str(exc)}
+        exit_code=2
+    finally:
+        if reader is not None:
+            report["request_history"]=reader.history
+        report["summary"]={
+          "status":report["status"],
+          "last_successful_stage":report["last_successful_stage"],
+          "failed_stage":report["failed_stage"],
+          "request_count":len(report["request_history"]),
+          "observed_range_count":len(report["observed_ranges"]),
+          "tile_probe_count":len(report["tile_probes"]),
+          "requests_pass":sum(x.get("pass",False) for group in report["observed_ranges"] for x in group["clients"])+sum(x[k].get("pass",False) for x in report["tile_probes"] for k in ("requests","curl")),
+          "gdal_tile_pass":sum(x["gdal"].get("status")=="PASS" for x in report["tile_probes"]),
+          "note":"Transport evidence only; not TIFF integrity or scientific acceptance."
+        }
+        output.parent.mkdir(parents=True,exist_ok=True)
+        output.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
     print(json.dumps(report["summary"],indent=2))
-    print(f"Report: {a.output}")
-    return 0
+    print(f"Report: {output}")
+    return exit_code
 
 if __name__=="__main__":
     try: sys.exit(main())
