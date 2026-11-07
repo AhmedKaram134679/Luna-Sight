@@ -122,7 +122,7 @@ jobs:
           cd ..
           /usr/bin/python3 LunaSight_Terrain_Validation/diagnose_cog_range_failures.py \
             --sources official_sources.json \
-            --product ldem_87s_5mpp.tif \
+            --product ldem_87s_5mpp \
             --range 1677083818-1677191372 \
             --range 1903045609-1903175929 \
             --max-tiles 4 \
