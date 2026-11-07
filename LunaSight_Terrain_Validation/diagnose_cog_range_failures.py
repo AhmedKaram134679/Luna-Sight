@@ -251,6 +251,7 @@ def main():
         "last_successful_stage":None,
         "failed_stage":None,
         "error":None,
+        "failed_request":None,
         "request_history":[],
         "tiff_structure":None,
         "observed_ranges":[],
@@ -291,6 +292,12 @@ def main():
     except Exception as exc:
         report["status"]="PARTIAL_FAILURE"
         report["error"]={"type":type(exc).__name__,"message":str(exc)}
+        if reader is not None:
+            report["failed_request"] = next(
+                (item for item in reversed(reader.history)
+                 if item.get("pass") is False or item.get("status") == "REQUEST_ERROR"),
+                None
+            )
         exit_code=2
     finally:
         if reader is not None:
@@ -299,6 +306,7 @@ def main():
           "status":report["status"],
           "last_successful_stage":report["last_successful_stage"],
           "failed_stage":report["failed_stage"],
+          "failed_request":report["failed_request"],
           "request_count":len(report["request_history"]),
           "observed_range_count":len(report["observed_ranges"]),
           "tile_probe_count":len(report["tile_probes"]),
