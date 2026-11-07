@@ -90,49 +90,13 @@ jobs:
               out.write(f"longitude={lon}\nlatitude={lat}\nhalf_width_m={half*1000.0}\n")
           PY
 
-      - name: Discover exact official LOLA source links
+      - name: Test and discover exact official LOLA source links
         run: |
-          /usr/bin/python3 - <<'PY'
-          import requests
-          from bs4 import BeautifulSoup
-          from urllib.parse import urljoin
-          import re, json
-          pages = [
-            ("https://pgda.gsfc.nasa.gov/products/90", [
-              "LDEM_80S_20MPP_ADJ.TIF",
-              "LDEM_80S_20MPP_ADJ_EFFRES.TIF",
-              "LDEM_80S_20MPP_ADJ_ERR.TIF",
-              "LDEC_80S_20MPP_ADJ.TIF",
-            ]),
-            ("https://pgda.gsfc.nasa.gov/products/81", [
-              "ldem_87s_5mpp",
-              "ldec_87s_5mpp",
-            ]),
-          ]
-          session=requests.Session()
-          session.headers["User-Agent"]="LunaSight scientific data acquisition; contact via repository"
-          found={}
-          for page,names in pages:
-              response=session.get(page,timeout=120)
-              response.raise_for_status()
-              soup=BeautifulSoup(response.text,"html.parser")
-              candidates=[]
-              for a in soup.find_all("a",href=True):
-                  candidates.append((a.get_text(" ",strip=True),urljoin(page,a["href"])))
-              for name in names:
-                  matches=[u for text,u in candidates if name.lower() in (text+" "+u).lower()]
-                  if not matches:
-                      # Search raw HTML for an exact filename/path reference, then resolve relative URL.
-                      matches=[urljoin(page,m.group(1)) for m in re.finditer(
-                          r'''(?:href|src)=["']([^"']*''+re.escape(name)+r'''[^"']*)["']''',
-                          response.text,re.I)]
-                  if not matches:
-                      raise SystemExit(f"Official product page {page} did not expose a link matching {name}; refusing to guess.")
-                  found[name]={"product_page":page,"download_url":matches[0]}
-          with open("official_sources.json","w") as out:
-              json.dump(found,out,indent=2)
-          print(json.dumps(found,indent=2))
-          PY
+          set -euo pipefail
+          cd LunaSight_Terrain_Validation
+          /usr/bin/python3 -m unittest discover -s tests -p 'test_discover_lola_sources.py' -v
+          cd ..
+          /usr/bin/python3 LunaSight_Terrain_Validation/discover_lola_sources.py --output official_sources.json
 
       - name: Resolve observer in the actual 20 m LOLA raster CRS
         id: projection
