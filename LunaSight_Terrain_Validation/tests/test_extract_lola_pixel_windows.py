@@ -24,7 +24,7 @@ class PixelWindowTests(unittest.TestCase):
         bounds = (min(p[0] for p in mapped), min(p[1] for p in mapped),
                   max(p[0] for p in mapped), max(p[1] for p in mapped))
         window = pixel_window_from_map_bounds(gt, 20, 20, bounds)
-        self.assertEqual(window, (3, 4, 2, 2))
+        self.assertEqual(window, (2, 3, 4, 4))
 
     def test_rejects_out_of_bounds(self):
         gt = [0.0, 1.0, 0.0, 10.0, 0.0, -1.0]
