@@ -53,7 +53,7 @@ class RangeReader:
             try:
                 p = subprocess.run(cmd, capture_output=True, timeout=self.timeout[1]+10)
                 raw = p.stdout
-                marker = b"\\nLUNASIGHT_CURL_META:"
+                marker = b"\nLUNASIGHT_CURL_META:"
                 pos = raw.rfind(marker)
                 meta = raw[pos+len(marker):].decode("utf-8", "replace").strip() if pos >= 0 else ""
                 body = raw[:pos] if pos >= 0 else b""
@@ -63,7 +63,7 @@ class RangeReader:
                 size = int(parts[2]) if len(parts)>2 and parts[2].isdigit() else len(body)
                 header_blob = body
                 # -D - writes headers before body; locate last header terminator.
-                split = header_blob.rfind(b"\\r\\n\\r\\n")
+                split = header_blob.rfind(b"\r\n\r\n")
                 headers_text = header_blob[:split].decode("latin1", "replace") if split >= 0 else ""
                 payload = header_blob[split+4:] if split >= 0 else header_blob
                 result = self._validate(client, start, end, status, effective, headers_text, payload)
@@ -77,7 +77,7 @@ class RangeReader:
         try:
             response = self.session.get(self.url, headers=headers, stream=False,
                                         allow_redirects=True, timeout=self.timeout)
-            header_lines = "\\n".join(f"{k}: {v}" for k,v in response.headers.items())
+            header_lines = "\n".join(f"{k}: {v}" for k,v in response.headers.items())
             return self._validate(client, start, end, response.status_code, response.url,
                                   header_lines, response.content)
         except requests.RequestException as exc:
@@ -244,7 +244,7 @@ def main():
       "gdal_tile_pass":sum(x["gdal"].get("status")=="PASS" for x in report["tile_probes"]),
       "note":"A passing range test is transport evidence only, not TIFF integrity or scientific acceptance."
     }
-    Path(a.output).write_text(json.dumps(report,indent=2)+"\\n",encoding="utf-8")
+    Path(a.output).write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
     print(json.dumps(report["summary"],indent=2))
     print(f"Report: {a.output}")
     return 0
