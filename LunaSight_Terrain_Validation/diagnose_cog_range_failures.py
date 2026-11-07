@@ -35,7 +35,7 @@ class RangeReader:
         self.session.mount("http://", adapter)
         self.history = []
 
-    def get(self, start: int, end: int, client="requests") -> dict:
+    def get(self, start: int, end: int, client="requests", include_body=False) -> dict:
         if start < 0 or end < start:
             raise ValueError("Invalid byte range")
         headers = {"Range": f"bytes={start}-{end}",
@@ -78,8 +78,11 @@ class RangeReader:
             response = self.session.get(self.url, headers=headers, stream=False,
                                         allow_redirects=True, timeout=self.timeout)
             header_lines = "\n".join(f"{k}: {v}" for k,v in response.headers.items())
-            return self._validate(client, start, end, response.status_code, response.url,
-                                  header_lines, response.content)
+            result = self._validate(client, start, end, response.status_code, response.url,
+                                    header_lines, response.content)
+            if include_body and result.get("pass"):
+                result["_body"] = response.content
+            return result
         except requests.RequestException as exc:
             return {"client": client, "status": "REQUEST_ERROR", "error": str(exc)}
 
@@ -108,15 +111,18 @@ class RangeReader:
 
 
 def read_exact(reader: RangeReader, offset: int, size: int) -> bytes:
-    result=reader.get(offset,offset+size-1)
+    if size <= 0:
+        raise ValueError("TIFF structure read size must be positive")
+    # Keep and consume the exact bytes validated from this single HTTP response.
+    result = reader.get(offset, offset + size - 1, include_body=True)
     if not result.get("pass"):
         raise RuntimeError(f"Cannot read TIFF structure at {offset}+{size}: {result}")
-    # Re-fetch only the small structural segment; requests response body is not retained in report.
-    r=reader.session.get(reader.url,headers={"Range":f"bytes={offset}-{offset+size-1}",
-        "Accept-Encoding":"identity"},allow_redirects=True,timeout=reader.timeout)
-    if r.status_code!=206 or len(r.content)!=size:
-        raise RuntimeError(f"TIFF structure range changed between reads at {offset}")
-    return r.content
+    body = result.pop("_body", None)
+    if not isinstance(body, bytes) or len(body) != size:
+        raise RuntimeError(
+            f"Validated TIFF structure response did not retain {size} bytes at {offset}"
+        )
+    return body
 
 
 def parse_tiff_tile_tables(reader: RangeReader) -> dict:
