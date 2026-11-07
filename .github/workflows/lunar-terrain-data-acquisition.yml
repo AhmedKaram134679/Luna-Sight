@@ -114,6 +114,20 @@ jobs:
           cd ..
           /usr/bin/python3 LunaSight_Terrain_Validation/validate_remote_access.py --sources official_sources.json --output remote_access_diagnostics.json --range-size 1024
 
+      - name: Diagnose TIFF tile byte ranges with requests, curl and GDAL
+        run: |
+          set -euo pipefail
+          cd LunaSight_Terrain_Validation
+          /usr/bin/python3 -m unittest discover -s tests -p 'test_diagnose_cog_range_failures.py' -v
+          cd ..
+          /usr/bin/python3 LunaSight_Terrain_Validation/diagnose_cog_range_failures.py \
+            --sources official_sources.json \
+            --product ldem_87s_5mpp.tif \
+            --range 1677083818-1677191372 \
+            --range 1903045609-1903175929 \
+            --max-tiles 4 \
+            --output cog_range_failure_diagnostics.json
+
       - name: Resolve observer in the actual 20 m LOLA raster CRS
         id: projection
         env:
