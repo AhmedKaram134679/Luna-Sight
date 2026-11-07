@@ -135,8 +135,9 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Resolve observer in the actual 20 m LOLA raster CRS
+      - name: Resolve observer in the actual 20 m LOLA raster CRS (non-blocking diagnostic)
         id: projection
+        continue-on-error: true
         env:
           OBS_LON: ${{ steps.observer.outputs.longitude }}
           OBS_LAT: ${{ steps.observer.outputs.latitude }}
@@ -177,7 +178,7 @@ jobs:
           set -euo pipefail
           mkdir -p terrain_data/source_metadata terrain_data/subsets
           cp remote_access_diagnostics.json terrain_data/remote_access_diagnostics.json
-          cp observer_projection.json terrain_data/observer_projection_20m_diagnostic.json
+          if [ -f observer_projection.json ]; then cp observer_projection.json terrain_data/observer_projection_20m_diagnostic.json; fi
           ARGS=()
           if [ "$ACQUIRE_5M" = "true" ]; then ARGS+=(--include-5m); fi
           if [ "$ACQUIRE_20M" = "true" ]; then ARGS+=(--include-20m); fi
@@ -200,6 +201,15 @@ jobs:
           print(json.dumps({"status":report["status"],"products":len(report["products"]),
                             "windows":[p["pixel_window_xoff_yoff_xsize_ysize"] for p in report["products"]]},indent=2))
           PY
+
+      - name: Upload pixel-window extraction report (including partial failures)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunasight-pixel-window-extraction-report
+          path: terrain_data/pixel_window_extraction_report.json
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Build checksums and inventory
         run: |
