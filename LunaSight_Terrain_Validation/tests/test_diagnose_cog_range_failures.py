@@ -48,6 +48,37 @@ class COGRangeTests(unittest.TestCase):
         self.assertEqual(read_exact(reader, 16, 8), b"TIFFDATA")
         self.assertEqual(reader.calls, [(16, 23, "requests", True)])
 
+    def test_read_exact_chunks_large_structure_and_concatenates_in_order(self):
+        class FakeReader:
+            def __init__(self):
+                self.calls = []
+            def get(self, start, end, client="requests", include_body=False):
+                self.calls.append((start, end, include_body))
+                body = bytes(range(start, end + 1))
+                return {"pass": True, "_body": body}
+        reader = FakeReader()
+        self.assertEqual(read_exact(reader, 100, 10, chunk_size=4),
+                         bytes(range(100, 110)))
+        self.assertEqual(reader.calls, [
+            (100, 103, True), (104, 107, True), (108, 109, True)
+        ])
+
+    def test_read_exact_stops_on_failed_later_chunk(self):
+        class FakeReader:
+            def __init__(self):
+                self.calls = []
+            def get(self, start, end, client="requests", include_body=False):
+                self.calls.append((start, end))
+                if start >= 104:
+                    return {"pass": False, "http_status": 403,
+                            "content_range": "", "received_bytes": 238,
+                            "expected_bytes": end-start+1}
+                return {"pass": True, "_body": b"x" * (end-start+1)}
+        reader = FakeReader()
+        with self.assertRaisesRegex(RuntimeError, "104\\+4"):
+            read_exact(reader, 100, 10, chunk_size=4)
+        self.assertEqual(reader.calls, [(100, 103), (104, 107)])
+
     def test_read_exact_rejects_unvalidated_range_without_second_request(self):
         class FakeReader:
             def __init__(self):
