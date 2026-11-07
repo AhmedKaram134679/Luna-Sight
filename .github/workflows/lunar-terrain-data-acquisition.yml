@@ -128,6 +128,15 @@ jobs:
             --max-tiles 4 \
             --output cog_range_failure_diagnostics.json
 
+      - name: Upload targeted COG range diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunasight-cog-range-diagnostics
+          path: cog_range_failure_diagnostics.json
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Resolve observer in the actual 20 m LOLA raster CRS
         id: projection
         env:
