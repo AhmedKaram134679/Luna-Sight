@@ -315,7 +315,11 @@ def main():
           "note":"Transport evidence only; not TIFF integrity or scientific acceptance."
         }
         output.parent.mkdir(parents=True,exist_ok=True)
-        output.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
+        temporary_output = output.with_name(output.name + ".tmp")
+        temporary_output.write_text(
+            json.dumps(report,indent=2)+"\n", encoding="utf-8"
+        )
+        temporary_output.replace(output)
     print(json.dumps(report["summary"],indent=2))
     print(f"Report: {output}")
     return exit_code
