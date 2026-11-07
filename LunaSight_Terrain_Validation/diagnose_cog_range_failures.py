@@ -20,6 +20,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 TRANSIENT = (429, 500, 502, 503, 504)
+TIFF_READ_CHUNK_SIZE = 16 * 1024
 
 
 class RangeReader:
@@ -82,9 +83,15 @@ class RangeReader:
                                     header_lines, response.content)
             if include_body and result.get("pass"):
                 result["_body"] = response.content
+            history_entry = {k: v for k, v in result.items() if k != "_body"}
+            history_entry.update({"requested_start": start, "requested_end": end})
+            self.history.append(history_entry)
             return result
         except requests.RequestException as exc:
-            return {"client": client, "status": "REQUEST_ERROR", "error": str(exc)}
+            failure = {"client": client, "status": "REQUEST_ERROR", "error": str(exc),
+                       "requested_start": start, "requested_end": end}
+            self.history.append(failure)
+            return failure
 
     def _validate(self, client, start, end, status, final_url, header_text, body):
         hdr = {}
@@ -110,23 +117,35 @@ class RangeReader:
         return result
 
 
-def read_exact(reader: RangeReader, offset: int, size: int) -> bytes:
+def read_exact(reader: RangeReader, offset: int, size: int,
+               chunk_size: int = TIFF_READ_CHUNK_SIZE) -> bytes:
     if size <= 0:
         raise ValueError("TIFF structure read size must be positive")
-    # Keep and consume the exact bytes validated from this single HTTP response.
-    result = reader.get(offset, offset + size - 1, include_body=True)
-    if not result.get("pass"):
-        raise RuntimeError(f"Cannot read TIFF structure at {offset}+{size}: {result}")
-    body = result.pop("_body", None)
-    if not isinstance(body, bytes) or len(body) != size:
-        raise RuntimeError(
-            f"Validated TIFF structure response did not retain {size} bytes at {offset}"
-        )
-    return body
+    if chunk_size <= 0:
+        raise ValueError("TIFF structure chunk size must be positive")
+    chunks = []
+    consumed = 0
+    while consumed < size:
+        current_size = min(chunk_size, size - consumed)
+        start = offset + consumed
+        end = start + current_size - 1
+        result = reader.get(start, end, include_body=True)
+        if not result.get("pass"):
+            raise RuntimeError(
+                f"Cannot read TIFF structure chunk at {start}+{current_size}: {result}"
+            )
+        body = result.pop("_body", None)
+        if not isinstance(body, bytes) or len(body) != current_size:
+            raise RuntimeError(
+                f"Validated TIFF response did not retain {current_size} bytes at {start}"
+            )
+        chunks.append(body)
+        consumed += current_size
+    return b"".join(chunks)
 
 
-def parse_tiff_tile_tables(reader: RangeReader) -> dict:
-    header=read_exact(reader,0,16)
+def parse_tiff_tile_tables(reader: RangeReader, chunk_size: int = TIFF_READ_CHUNK_SIZE) -> dict:
+    header=read_exact(reader,0,16,chunk_size)
     endian_mark=header[:2]
     if endian_mark==b"II": endian="<"
     elif endian_mark==b"MM": endian=">"
@@ -148,9 +167,9 @@ def parse_tiff_tile_tables(reader: RangeReader) -> dict:
         if not ifd or ifd in visited: break
         visited.add(ifd)
         count_size=struct.calcsize(count_fmt)
-        count=struct.unpack(endian+count_fmt,read_exact(reader,ifd,count_size))[0]
+        count=struct.unpack(endian+count_fmt,read_exact(reader,ifd,count_size,chunk_size))[0]
         if count>100000: raise RuntimeError(f"Unreasonable TIFF IFD entry count: {count}")
-        raw=read_exact(reader,ifd+count_size,count*entry_size+next_size)
+        raw=read_exact(reader,ifd+count_size,count*entry_size+next_size,chunk_size)
         tags={}
         for i in range(count):
             e=raw[i*entry_size:(i+1)*entry_size]
@@ -163,7 +182,7 @@ def parse_tiff_tile_tables(reader: RangeReader) -> dict:
             if total<=inline_size: payload=value_field[:total]
             else:
                 pos=struct.unpack(endian+offset_fmt,value_field)[0]
-                payload=read_exact(reader,pos,total)
+                payload=read_exact(reader,pos,total,chunk_size)
             if typ in (3,8): fmt="H" if typ==3 else "h"
             elif typ in (4,9): fmt="I" if typ==4 else "i"
             elif typ in (16,17,18): fmt="Q" if typ in (16,18) else "q"
@@ -182,7 +201,7 @@ def parse_tiff_tile_tables(reader: RangeReader) -> dict:
                 "tile_count":len(offsets),"tile_offsets":offsets,"tile_byte_counts":counts})
         next_pos=ifd+count_size+count*entry_size
         ifd=struct.unpack(endian+("Q" if big else "I"),
-                          read_exact(reader,next_pos,next_size))[0]
+                          read_exact(reader,next_pos,next_size,chunk_size))[0]
     if not directories: raise RuntimeError("No tiled TIFF directories with tags 324/325 were found")
     return {"byte_order":endian_mark.decode(),"bigtiff":big,"directories":directories}
 
