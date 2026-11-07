@@ -13,6 +13,8 @@ import json
 import math
 import subprocess
 import sys
+
+import requests
 from pathlib import Path
 from typing import Any
 
@@ -89,8 +91,38 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def inspect_http_response(url: str, sample_bytes: int = 65536) -> dict[str, Any]:
+    """Capture a bounded HTTP Range response without downloading a full DEM."""
+    response = requests.get(url, headers={"Range": f"bytes=0-{sample_bytes - 1}", "Accept-Encoding": "identity"},
+                            stream=True, timeout=(30, 120), allow_redirects=True)
+    digest = hashlib.sha256()
+    body = bytearray()
+    try:
+        for chunk in response.iter_content(chunk_size=8192):
+            if not chunk: continue
+            piece = chunk[:sample_bytes - len(body)]
+            body.extend(piece); digest.update(piece)
+            if len(body) >= sample_bytes: break
+        content_type = response.headers.get("Content-Type", "")
+        prefix = bytes(body[:512]).lstrip().lower()
+        looks_html = "html" in content_type.lower() or prefix.startswith((b"<!doctype html", b"<html", b"<head"))
+        return {"requested_range": f"bytes=0-{sample_bytes - 1}", "final_url": response.url,
+                "redirect_count": len(response.history), "status_code": response.status_code,
+                "headers": dict(response.headers), "content_type": content_type,
+                "content_range": response.headers.get("Content-Range"),
+                "content_length_header": response.headers.get("Content-Length"),
+                "sampled_body_bytes": len(body), "sampled_body_sha256": digest.hexdigest(),
+                "body_looks_like_html": looks_html,
+                "html_preview": bytes(body[:2048]).decode("utf-8", errors="replace") if looks_html else None,
+                "range_contract_pass": response.status_code == 206 and response.headers.get("Content-Range", "").startswith(f"bytes 0-{len(body)-1}/")}
+    finally:
+        response.close()
+
 def extract_one(name: str, url: str, output_dir: Path, longitude: float,
                 latitude: float, half_width_m: float) -> dict[str, Any]:
+    http_diagnostic = inspect_http_response(url)
+    if http_diagnostic["status_code"] not in (200, 206) or http_diagnostic["body_looks_like_html"]:
+        raise RuntimeError(f"HTTP preflight rejected raster response: status={http_diagnostic['status_code']} content_type={http_diagnostic['content_type']!r} preview={http_diagnostic['html_preview']!r}")
     source = "/vsicurl/" + url
     gdal.UseExceptions()
     gdal_errors = []
@@ -141,7 +173,7 @@ def extract_one(name: str, url: str, output_dir: Path, longitude: float,
     output_ds_wkt = out_ds.GetProjection()
     out_ds = None
     return {
-        "product_filename": name, "source_url": url, "subset_file": str(output),
+        "product_filename": name, "source_url": url, "http_response_diagnostic": http_diagnostic, "subset_file": str(output),
         "gdal_open_messages": gdal_errors, "gdal_translate_messages": translate_errors,
         "subset_bytes": output.stat().st_size, "subset_sha256": sha256(output),
         "source_dimensions": [int(source_width), int(source_height)],
@@ -178,8 +210,8 @@ def main() -> int:
     parser.add_argument("--include-5m", action="store_true")
     parser.add_argument("--include-20m", action="store_true")
     args = parser.parse_args()
-    report: dict[str, Any] = {"schema_version": 1, "status": "RUNNING", "products": [], "errors": [],
-                              "http_access_context": "GDAL /vsicurl/ exposes CPL/GDAL errors but not raw HTTP response headers."}
+    report: dict[str, Any] = {"schema_version": 2, "status": "RUNNING", "products": [], "errors": [], "selected_products": [],
+                              "http_access_context": "Bounded per-product HTTP Range responses are captured separately; GDAL /vsicurl/ does not expose raw response headers."}
     try:
         if not (-360 <= args.longitude_east <= 360 and -90 <= args.latitude <= 90):
             raise ValueError("Observer coordinates outside accepted range")
@@ -189,25 +221,29 @@ def main() -> int:
         selected = [(name, entry) for name, entry in sources.items()
                     if ((args.include_20m and name.startswith("LDEM_80S"))
                         or (args.include_5m and name.startswith("ldem_87s")))]
+        report["selected_products"] = [name for name, _ in selected]
         for name, entry in selected:
             try:
-                report["products"].append(extract_one(
-                    name, entry["download_url"], args.output_dir,
+                report["products"].append(extract_one(name, entry["download_url"], args.output_dir,
                     args.longitude_east, args.latitude, args.half_width_m))
             except Exception as exc:
                 report["errors"].append({"product": name, "error": str(exc)})
-                raise
-        report["status"] = "PASS" if report["products"] else "FAIL_NO_PRODUCTS"
-        if not report["products"]:
-            raise RuntimeError("No matching 5m/20m elevation products were found in source manifest")
+        if not selected:
+            report["status"] = "FAIL_NO_PRODUCTS"
+            report["fatal_error"] = "No matching 5m/20m elevation products were found in source manifest"
+        elif report["errors"]:
+            report["status"] = "FAIL_PARTIAL" if report["products"] else "FAIL"
+        else:
+            report["status"] = "PASS"
     except Exception as exc:
         report["status"] = "FAIL"
         report["fatal_error"] = str(exc)
     finally:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"status": report["status"], "products": len(report["products"]),
-                      "errors": report["errors"], "report": str(args.report)}, indent=2))
+    print(json.dumps({"status": report["status"], "selected_products": report["selected_products"],
+                      "products": len(report["products"]), "errors": report["errors"],
+                      "report": str(args.report)}, indent=2))
     return 0 if report["status"] == "PASS" else 2
 
 
