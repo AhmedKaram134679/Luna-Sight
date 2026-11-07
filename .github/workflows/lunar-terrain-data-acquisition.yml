@@ -126,6 +126,7 @@ jobs:
             --range 1677083818-1677191372 \
             --range 1903045609-1903175929 \
             --max-tiles 4 \
+            --chunk-size 16384 \
             --output cog_range_failure_diagnostics.json
 
       - name: Upload targeted COG range diagnostics
