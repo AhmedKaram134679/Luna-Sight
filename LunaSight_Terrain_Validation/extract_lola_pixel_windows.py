@@ -75,7 +75,10 @@ def observer_map_xy(ds: gdal.Dataset, longitude: float, latitude: float, altitud
     x, y, z = transform.TransformPoint(longitude, latitude, altitude_m)
     if not all(math.isfinite(v) for v in (x, y, z)):
         raise RuntimeError("Observer CRS transformation returned non-finite coordinates")
-    return (x, y, z), source.ExportToWkt(), target.ExportToWkt()
+    linear_units_to_m = target.GetLinearUnits()
+    if not math.isfinite(linear_units_to_m) or linear_units_to_m <= 0:
+        raise RuntimeError("Raster native CRS has no valid linear-unit conversion to metres")
+    return (x, y, z), source.ExportToWkt(), target.ExportToWkt(), linear_units_to_m
 
 
 def sha256(path: Path) -> str:
@@ -103,8 +106,10 @@ def extract_one(name: str, url: str, output_dir: Path, longitude: float,
     gt = ds.GetGeoTransform(can_return_null=True)
     if gt is None:
         raise RuntimeError("Source raster has no affine geotransform")
-    (x, y, z), geographic_wkt, native_wkt = observer_map_xy(ds, longitude, latitude)
-    bounds = (x - half_width_m, y - half_width_m, x + half_width_m, y + half_width_m)
+    (x, y, z), geographic_wkt, native_wkt, linear_units_to_m = observer_map_xy(ds, longitude, latitude)
+    half_width_native = half_width_m / linear_units_to_m
+    bounds = (x - half_width_native, y - half_width_native,
+              x + half_width_native, y + half_width_native)
     window = pixel_window_from_map_bounds(gt, ds.RasterXSize, ds.RasterYSize, bounds)
     source_width, source_height = ds.RasterXSize, ds.RasterYSize
 
@@ -144,6 +149,9 @@ def extract_one(name: str, url: str, output_dir: Path, longitude: float,
         "geographic_crs_wkt": geographic_wkt,
         "observer_map_coordinates": {"x": x, "y": y, "z": z},
         "requested_map_bounds_xmin_ymin_xmax_ymax": list(bounds),
+        "native_crs_linear_unit_to_metre": linear_units_to_m,
+        "requested_half_width_m": half_width_m,
+        "requested_half_width_native_units": half_width_native,
         "pixel_window_xoff_yoff_xsize_ysize": list(window),
         "pixel_window_validation": "PASS_POSITIVE_AND_IN_BOUNDS",
         "pixel_axis_direction": {
