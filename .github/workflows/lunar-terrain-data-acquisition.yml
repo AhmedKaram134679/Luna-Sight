@@ -55,6 +55,15 @@ concurrency:
 
 jobs:
   acquire-and-inspect:
+    env:
+      GDAL_HTTP_MAX_RETRY: '4'
+      GDAL_HTTP_RETRY_DELAY: '2'
+      GDAL_HTTP_RETRY_CODES: '429,500,502,503,504'
+      GDAL_HTTP_TIMEOUT: '120'
+      GDAL_HTTP_CONNECTTIMEOUT: '30'
+      CPL_VSIL_CURL_CACHE_SIZE: '16777216'
+      CPL_VSIL_CURL_CHUNK_SIZE: '65536'
+      GDAL_HTTP_USERAGENT: 'LunaSight scientific data acquisition'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
@@ -97,6 +106,14 @@ jobs:
           /usr/bin/python3 -m unittest discover -s tests -p 'test_discover_lola_sources.py' -v
           cd ..
           /usr/bin/python3 LunaSight_Terrain_Validation/discover_lola_sources.py --output official_sources.json
+
+      - name: Diagnose NASA HTTP HEAD and byte-range access
+        run: |
+          set -euo pipefail
+          cd LunaSight_Terrain_Validation
+          /usr/bin/python3 -m unittest discover -s tests -p 'test_validate_remote_access.py' -v
+          cd ..
+          /usr/bin/python3 LunaSight_Terrain_Validation/validate_remote_access.py --sources official_sources.json --output remote_access_diagnostics.json --range-size 1024
 
       - name: Resolve observer in the actual 20 m LOLA raster CRS
         id: projection
